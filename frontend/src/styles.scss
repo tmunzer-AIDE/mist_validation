@@ -1,0 +1,62 @@
+@use '@angular/material' as mat;
+
+@include mat.core();
+
+$theme: mat.define-theme(
+  (
+    color: (
+      theme-type: light,
+      primary: mat.$azure-palette,
+      tertiary: mat.$blue-palette,
+    ),
+    typography: (
+      brand-family: 'Roboto, sans-serif',
+    ),
+  )
+);
+
+html {
+  @include mat.all-component-themes($theme);
+}
+
+body {
+  margin: 0;
+  font-family: Roboto, 'Helvetica Neue', sans-serif;
+  background-color: #f5f5f5;
+}
+
+.table-card {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.status-pass {
+  color: #4caf50;
+}
+.status-fail {
+  color: #f44336;
+}
+.status-warn {
+  color: #ff9800;
+}
+.status-info {
+  color: #2196f3;
+}
+
+mat-chip.status-pass {
+  background: #e8f5e9 !important;
+  color: #2e7d32 !important;
+}
+mat-chip.status-fail {
+  background: #ffebee !important;
+  color: #c62828 !important;
+}
+mat-chip.status-warn {
+  background: #fff3e0 !important;
+  color: #e65100 !important;
+}
+mat-chip.status-info {
+  background: #e3f2fd !important;
+  color: #1565c0 !important;
+}

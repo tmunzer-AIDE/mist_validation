@@ -1,0 +1,10 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+aiosqlite>=0.20.0
+apscheduler>=3.10.0
+mistapi>=0.61.1
+reportlab>=4.0.0
+pydantic>=2.10.0
+python-multipart>=0.0.12
+jinja2>=3.1.0
+structlog>=24.0.0
