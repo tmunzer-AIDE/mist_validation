@@ -1,26 +1,35 @@
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Cookie, Depends, HTTPException
 
+from app.core.session import SessionData, session_store
 from app.models import SiteOption, SitesResponse
 from app.services.mist_service import ConfigurationError, MistAPIError, MistService
 
 router = APIRouter()
 
 
+def get_session(session_id: str = Cookie(default="")) -> SessionData:
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return s
+
+
 @router.get("/sites", response_model=SitesResponse)
 async def list_sites(
-    x_mist_cloud: str = Header(...),
-    x_mist_org_id: str = Header(...),
-    x_mist_token: str | None = Header(default=None),
-    x_mist_email: str | None = Header(default=None),
-    x_mist_password: str | None = Header(default=None),
+    org_id: str,
+    session: SessionData = Depends(get_session),
 ):
+    # Verify org access
+    if org_id not in session.org_ids:
+        raise HTTPException(status_code=403, detail="Access denied to this organization")
+
     try:
         mist = MistService(
-            org_id=x_mist_org_id,
-            cloud_region=x_mist_cloud,
-            api_token=x_mist_token,
-            email=x_mist_email,
-            password=x_mist_password,
+            org_id=org_id,
+            cloud_region=session.mist_cloud,
+            api_token=session.mist_token,
+            cookies=session.mist_cookies,
+            csrftoken=session.mist_csrftoken,
         )
         sites = await mist.get_sites()
         options = sorted(

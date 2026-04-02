@@ -27,18 +27,18 @@ class ConfigurationError(Exception):
 
 
 _HOST_MAP = {
-    "global_01": "api.mist.com",
-    "global_02": "api.gc1.mist.com",
-    "global_03": "api.ac2.mist.com",
-    "global_04": "api.gc2.mist.com",
-    "global_05": "api.gc4.mist.com",
-    "emea_01": "api.eu.mist.com",
-    "emea_02": "api.gc3.mist.com",
-    "emea_03": "api.ac6.mist.com",
-    "emea_04": "api.gc6.mist.com",
-    "apac_01": "api.ac5.mist.com",
-    "apac_02": "api.gc5.mist.com",
-    "apac_03": "api.gc7.mist.com",
+    "Global 01": "api.mist.com",
+    "Global 02": "api.gc1.mist.com",
+    "Global 03": "api.ac2.mist.com",
+    "Global 04": "api.gc2.mist.com",
+    "Global 05": "api.gc4.mist.com",
+    "EMEA 01": "api.eu.mist.com",
+    "EMEA 02": "api.gc3.mist.com",
+    "EMEA 03": "api.ac6.mist.com",
+    "EMEA 04": "api.gc6.mist.com",
+    "APAC 01": "api.ac5.mist.com",
+    "APAC 02": "api.gc5.mist.com",
+    "APAC 03": "api.gc7.mist.com",
 }
 
 
@@ -48,21 +48,21 @@ class MistService:
     def __init__(
         self,
         org_id: str | None = None,
-        cloud_region: str = "global_01",
+        cloud_region: str = "Global 01",
         api_token: str | None = None,
-        email: str | None = None,
-        password: str | None = None,
+        cookies: dict | None = None,
+        csrftoken: str | None = None,
     ):
         self.org_id = org_id
         self.cloud_region = cloud_region
         self._api_token = api_token
-        self._email = email
-        self._password = password
+        self._cookies = cookies
+        self._csrftoken = csrftoken
 
         if not self.org_id:
             raise ConfigurationError("Mist Organization ID not configured")
-        if not api_token and not (email and password):
-            raise ConfigurationError("Either API token or email+password required")
+        if not api_token and not cookies:
+            raise ConfigurationError("Either API token or session cookies required")
 
         self.session = self._create_session()
 
@@ -70,9 +70,26 @@ class MistService:
         host = _HOST_MAP.get(self.cloud_region, "api.mist.com")
         try:
             if self._api_token:
-                session = APISession(host=host, apitoken=self._api_token)
+                session = APISession(
+                    host=host,
+                    apitoken=self._api_token,
+                    console_log_level=0,
+                    logging_log_level=20,
+                    show_cli_notif=False,
+                )
             else:
-                session = APISession(host=host, email=self._email, password=self._password)
+                # Cookie-based session: inject existing cookies from login
+                session = APISession(
+                    host=host,
+                    console_log_level=0,
+                    logging_log_level=20,
+                    show_cli_notif=False,
+                )
+                session._session.cookies.update(self._cookies)
+                if self._csrftoken:
+                    session._csrftoken = self._csrftoken
+                    session._session.headers["X-CSRFToken"] = self._csrftoken
+                session._authenticated = True
             logger.info("mist_api_session_created org_id=%s cloud_region=%s", self.org_id, self.cloud_region)
             return session
         except Exception as e:
@@ -212,54 +229,11 @@ class MistService:
         return self.session
 
 
-async def verify_mist_credentials(
-    auth_type: str,
-    token: str | None,
-    email: str | None,
-    password: str | None,
-    cloud: str,
-) -> dict:
-    """Verify Mist credentials and return user info.
+def get_cloud_list() -> list[dict]:
+    """Return available cloud regions as a list for the frontend."""
+    return [{"value": k, "label": f"{k} ({v})"} for k, v in _HOST_MAP.items()]
 
-    Returns {user_id, user_email, orgs: [{id, name}]}.
-    """
-    import mistapi as _mistapi
-    from mistapi import APISession
-    from mistapi.api.v1.self import self as self_api
 
-    host = _HOST_MAP.get(cloud, "api.mist.com")
-
-    if auth_type == "token":
-        if not token:
-            raise ConfigurationError("API token required")
-        session = APISession(host=host, apitoken=token)
-    else:
-        if not email or not password:
-            raise ConfigurationError("Email and password required")
-        session = APISession(host=host, email=email, password=password)
-
-    # Call /api/v1/self
-    resp = await _mistapi.arun(self_api.getSelf, session)
-    if resp.status_code != 200:
-        raise MistAPIError(f"Authentication failed: {resp.status_code}")
-
-    user_data = resp.data
-    user_id = user_data.get("id", "")
-    user_email = user_data.get("email", "")
-
-    # Extract orgs from privileges
-    privileges = user_data.get("privileges", [])
-    orgs_seen = {}
-    for priv in privileges:
-        if isinstance(priv, dict) and priv.get("scope") == "org":
-            org_id = priv.get("org_id", "")
-            org_name = priv.get("name", "") or priv.get("org_name", "") or org_id[:8]
-            if org_id and org_id not in orgs_seen:
-                orgs_seen[org_id] = org_name
-
-    return {
-        "user_id": user_id,
-        "user_email": user_email,
-        "orgs": [{"id": k, "name": v} for k, v in orgs_seen.items()],
-        "cloud": cloud,
-    }
+def get_host_for_cloud(cloud: str) -> str:
+    """Resolve a cloud region key to a Mist API host."""
+    return _HOST_MAP.get(cloud, "api.mist.com")

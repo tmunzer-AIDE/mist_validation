@@ -1,0 +1,100 @@
+<div class="login-container">
+  <mat-card class="login-card">
+    <mat-card-content style="padding: 0px;">
+      <div class="logo-row">
+        <div class="logo-icon-wrap">
+          <mat-icon class="logo-icon">verified_user</mat-icon>
+        </div>
+        <div>
+          <div class="app-title">Post-Deployment Report</div>
+          <div class="subtitle">Mist Network Validation Tool</div>
+        </div>
+      </div>
+
+      <form [formGroup]="form" (ngSubmit)="onSubmit()" style="display: flex; flex-direction: column; justify-content:  space-between; height: 380px;">
+        <!-- Auth mode toggle -->
+        <mat-button-toggle-group
+          class="toggle-group"
+          [value]="authMode()"
+          (change)="setMode($event.value)"
+          aria-label="Authentication mode"
+        >
+          <mat-button-toggle value="credentials">Username & Password</mat-button-toggle>
+          <mat-button-toggle value="token">API Token</mat-button-toggle>
+        </mat-button-toggle-group>
+        <div>
+        <!-- Cloud selection -->
+        <mat-form-field class="full-width" appearance="outline">
+          <mat-label>Cloud Region</mat-label>
+          <mat-select formControlName="cloud">
+            @for (cloud of clouds(); track cloud.value) {
+              <mat-option [value]="cloud.value">{{ cloud.label }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+
+        <!-- Token mode -->
+        @if (authMode() === 'token') {
+          <mat-form-field class="full-width" appearance="outline">
+            <mat-label>API Token</mat-label>
+            <input
+              matInput
+              type="password"
+              formControlName="token"
+              placeholder="Paste your Mist API token"
+              autocomplete="current-password"
+            />
+            <mat-icon matSuffix>key</mat-icon>
+          </mat-form-field>
+        }
+
+        <!-- Credentials mode -->
+        @if (authMode() === 'credentials') {
+          <mat-form-field class="full-width" appearance="outline">
+            <mat-label>Email</mat-label>
+            <input
+              matInput
+              type="email"
+              formControlName="email"
+              placeholder="you@example.com"
+              autocomplete="username"
+            />
+            <mat-icon matSuffix>email</mat-icon>
+          </mat-form-field>
+          <mat-form-field class="full-width" appearance="outline">
+            <mat-label>Password</mat-label>
+            <input
+              matInput
+              type="password"
+              formControlName="password"
+              autocomplete="current-password"
+            />
+            <mat-icon matSuffix>lock</mat-icon>
+          </mat-form-field>
+        }
+
+        @if (errorMsg()) {
+          <div class="error-msg">{{ errorMsg() }}</div>
+        }
+</div>
+<div class="spacer" style="flex-grow: 1;"></div>
+        @if (loading()) {
+          <div class="spinner-row">
+            <mat-spinner diameter="24"></mat-spinner>
+            <span>Connecting...</span>
+          </div>
+        } @else {
+          <button
+            mat-flat-button
+            color="primary"
+            class="full-width"
+            type="submit"
+            [disabled]="form.invalid"
+          >
+            Connect
+          </button>
+        }
+      </form>
+    </mat-card-content>
+  </mat-card>
+</div>

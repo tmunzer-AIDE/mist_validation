@@ -6,42 +6,19 @@ import { ReportViewComponent } from './features/report-view/report-view.componen
 type AppState = 'login' | 'site_selector' | 'report';
 
 export interface AuthInfo {
-  user_id: string;
   user_email: string;
+  token_name: string;
   orgs: { id: string; name: string }[];
   cloud: string;
-  auth_type: 'token' | 'credentials';
-  token?: string;
-  email?: string;
-  password?: string;
+  host: string;
+  method: 'token' | 'credentials';
 }
 
 @Component({
   selector: 'app-root',
   standalone: true,
   imports: [LoginComponent, SiteSelectorComponent, ReportViewComponent],
-  template: `
-    @switch (appState()) {
-      @case ('login') {
-        <app-login (authenticated)="onAuthenticated($event)" />
-      }
-      @case ('site_selector') {
-        <app-site-selector
-          [authInfo]="authInfo()!"
-          [selectedOrg]="selectedOrg()"
-          (orgSelected)="selectedOrg.set($event)"
-          (reportStarted)="onReportStarted($event)"
-        />
-      }
-      @case ('report') {
-        <app-report-view
-          [jobId]="activeJobId()!"
-          [authInfo]="authInfo()!"
-          (back)="appState.set('site_selector')"
-        />
-      }
-    }
-  `,
+  templateUrl: './app.component.html',
 })
 export class AppComponent {
   appState = signal<AppState>('login');

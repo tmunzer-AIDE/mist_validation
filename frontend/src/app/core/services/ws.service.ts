@@ -25,14 +25,36 @@ export class WsService {
     this.socket.onclose = () => {
       this.state = 'disconnected';
       this.socket = null;
+      this.scheduleReconnect();
     };
     this.socket.onerror = () => {
       this.state = 'disconnected';
       this.socket = null;
+      this.scheduleReconnect();
     };
   }
 
+  private pendingChannels = new Set<string>();
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private scheduleReconnect(): void {
+    if (this.reconnectTimer || this.pendingChannels.size === 0) return;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (this.state === 'disconnected' && this.pendingChannels.size > 0) {
+        this.connect();
+        // Re-subscribe all tracked channels once connected
+        for (const ch of this.pendingChannels) {
+          const send = () =>
+            this.socket?.send(JSON.stringify({ type: 'subscribe', channel: ch }));
+          this.socket?.addEventListener('open', send, { once: true });
+        }
+      }
+    }, 3000);
+  }
+
   subscribe(channel: string): void {
+    this.pendingChannels.add(channel);
     this.connect();
     const send = () =>
       this.socket?.send(JSON.stringify({ type: 'subscribe', channel }));
@@ -44,6 +66,7 @@ export class WsService {
   }
 
   unsubscribe(channel: string): void {
+    this.pendingChannels.delete(channel);
     this.socket?.send(JSON.stringify({ type: 'unsubscribe', channel }));
   }
 

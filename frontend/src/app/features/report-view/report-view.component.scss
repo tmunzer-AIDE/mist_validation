@@ -1,0 +1,489 @@
+.page-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 32px 24px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 32px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.topbar-title {
+  font-size: 24px;
+  font-weight: 600;
+  flex: 1;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.topbar-meta {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+// ── Sections ──
+
+.section {
+  margin-bottom: 28px;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+
+  mat-icon {
+    color: var(--text-secondary);
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+  }
+}
+
+// ── Site info ──
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.info-cell {
+  label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  .value {
+    font-size: 14px;
+    color: var(--text-primary);
+  }
+}
+
+// ── Summary bar ──
+
+.summary-bar {
+  display: flex;
+  align-items: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 5px;
+  padding: 16px 0;
+  margin-bottom: 24px;
+
+  .stat {
+    flex: 1;
+    text-align: center;
+    border-right: 1px solid var(--border-default);
+
+    &:last-child {
+      border-right: none;
+    }
+  }
+
+  .stat-count {
+    font-size: 24px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    line-height: 1;
+    display: block;
+  }
+
+  .stat-label {
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    display: block;
+  }
+}
+
+// ── Device summary stat cards ──
+
+.device-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+@media (max-width: 700px) {
+  .device-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+.device-stat-card {
+  padding: 14px 16px;
+  border-radius: 5px;
+  border-left: 3px solid var(--status-pass);
+
+  &.has-failures {
+    border-left-color: var(--status-fail);
+  }
+
+  .dtype {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-secondary);
+  }
+
+  .total {
+    font-size: 22px;
+    font-weight: 500;
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+    margin-top: 4px;
+  }
+
+  .failed {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--status-fail);
+  }
+
+  .healthy {
+    font-size: 13px;
+    color: var(--status-pass);
+  }
+}
+
+// ── Chips ──
+
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.result-chip {
+  font-size: 11px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  padding: 3px 10px;
+  border-radius: 3px;
+  border: 1px solid var(--border-default);
+  display: inline-block;
+
+  &.chip-org {
+    color: var(--text-secondary);
+  }
+
+  &.chip-site {
+    color: var(--text-secondary);
+  }
+}
+
+.chip-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+
+// ── Progress ──
+
+.progress-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.step-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 6px 0;
+}
+
+.step-icon {
+  margin-top: 2px;
+
+  &.done { color: var(--status-pass); }
+  &.running { color: var(--accent); }
+  &.pending { color: var(--text-tertiary); }
+  &.failed { color: var(--status-fail); }
+}
+
+.step-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.step-msg {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.progress-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.progress-count {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+// ── Export / Tables ──
+
+.export-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  margin-bottom: 28px;
+  border: 1px solid var(--border-default);
+  border-radius: 5px;
+  background: var(--bg-surface);
+}
+
+table {
+  width: 100%;
+}
+
+// ── Failed view ──
+
+.failed-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48px 0;
+  text-align: center;
+}
+
+.failed-icon {
+  font-size: 48px;
+  width: 48px;
+  height: 48px;
+  color: var(--status-fail);
+  margin-bottom: 16px;
+}
+
+.failed-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--text-primary);
+}
+
+.failed-msg {
+  color: var(--text-secondary);
+  max-width: 480px;
+}
+
+mat-card {
+  padding: 24px;
+  margin-bottom: 0;
+}
+
+// ── Template variables table ──
+
+.var-table {
+  width: 100%;
+  border-collapse: collapse;
+
+  th {
+    text-align: left;
+    padding: 12px 16px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-secondary);
+    border-bottom: 2px solid var(--border-default);
+    background: var(--bg-elevated);
+  }
+
+  td {
+    padding: 10px 16px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border-muted);
+  }
+
+  .col-toggle { width: 40px; padding-right: 0; }
+  .col-validation { width: 100px; }
+  .col-count { width: 80px; text-align: center; }
+}
+
+.var-parent-row {
+  cursor: pointer;
+  transition: background 0.15s;
+
+  &:hover {
+    background: var(--bg-elevated);
+  }
+
+  &.var-row-fail {
+    background: var(--status-fail-bg);
+
+    &:hover {
+      background: #f3d5d8;
+    }
+  }
+
+  &.var-row-warn {
+    background: var(--status-warn-bg);
+
+    &:hover {
+      background: #fff0c2;
+    }
+  }
+}
+
+.expand-icon {
+  font-size: 18px;
+  width: 18px;
+  height: 18px;
+  color: var(--text-secondary);
+  transition: transform 0.2s ease;
+
+  &.expanded {
+    transform: rotate(90deg);
+  }
+}
+
+.status-label {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+
+  &.pass {
+    color: #1a6b00;
+    background: var(--status-pass-bg);
+  }
+  &.fail {
+    color: #870101;
+    background: var(--status-fail-bg);
+  }
+  &.warn {
+    color: #92400e;
+    background: var(--status-warn-bg);
+  }
+  &.info {
+    color: #015c95;
+    background: var(--status-info-bg);
+  }
+}
+
+.status-icon {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+
+  &.pass { color: var(--status-pass); }
+  &.fail { color: var(--status-fail); }
+  &.warn { color: var(--status-warn); }
+  &.info { color: var(--status-info); }
+}
+
+code {
+  padding: 2px 6px;
+  background: var(--bg-elevated);
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  border: 1px solid var(--border-muted);
+}
+
+.var-value,
+.var-count {
+  color: var(--text-secondary);
+}
+
+.var-value {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.var-count {
+  text-align: center;
+}
+
+.var-sub-row {
+  background: var(--bg-elevated);
+
+  td {
+    padding: 6px 16px;
+    font-size: 12px;
+  }
+}
+
+.sub-row-template {
+  .template-type {
+    color: var(--text-secondary);
+    font-size: 11px;
+  }
+
+  .template-sep {
+    color: var(--text-tertiary);
+    margin: 0 4px;
+  }
+
+  .template-name {
+    font-weight: 500;
+  }
+}
+
+// ── Device tables ──
+
+tr.clickable-row {
+  cursor: pointer;
+
+  &:hover {
+    background: var(--accent-hover);
+  }
+}
+
+.text-tertiary {
+  color: var(--text-tertiary);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: -0.02em;
+}

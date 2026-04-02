@@ -1,0 +1,19 @@
+@switch (appState()) {
+  @case ('login') {
+    <app-login (authenticated)="onAuthenticated($event)" />
+  }
+  @case ('site_selector') {
+    <app-site-selector
+      [authInfo]="authInfo()!"
+      [selectedOrg]="selectedOrg()"
+      (orgSelected)="selectedOrg.set($event)"
+      (reportStarted)="onReportStarted($event)"
+    />
+  }
+  @case ('report') {
+    <app-report-view
+      [jobId]="activeJobId()!"
+      (back)="appState.set('site_selector')"
+    />
+  }
+}

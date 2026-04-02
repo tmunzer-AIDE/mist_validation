@@ -18,6 +18,16 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 
 logger = logging.getLogger(__name__)
 
+
+def _checks_map(device: dict) -> dict:
+    """Convert a device's checks list to a lookup dict keyed by check ID."""
+    return {c["check"]: c for c in device.get("checks", [])}
+
+
+def _checks_values(device: dict) -> dict:
+    """Convert a device's checks list to a dict mapping check ID to value string."""
+    return {c["check"]: c.get("value", "") for c in device.get("checks", [])}
+
 # ── Colors & Styles ──────────────────────────────────────────────────────
 
 _GREEN = colors.HexColor("#4caf50")
@@ -253,7 +263,7 @@ def generate_pdf(report) -> bytes:
         cw = [w * 0.14, w * 0.08, w * 0.09, w * 0.11, w * 0.09, w * 0.06, w * 0.18, w * 0.25]
         data = [[_ph("Name"), _ph("Model"), _ph("Conn."), _ph("Firmware"), _ph("Eth0"), _ph("Pwr"), _ph("Config"), _ph("LLDP Neighbor")]]
         for ap in aps:
-            checks = {c["check"]: c for c in ap.get("checks", [])}
+            checks = _checks_map(ap)
             lldp = ap.get("lldp_neighbor", {})
             lldp_text = f"{lldp.get('system_name', '')} ({lldp.get('port_desc', '')})" if lldp.get("system_name") else ""
             conn_status = checks.get("connection_status", {}).get("status", "info")
@@ -279,7 +289,7 @@ def generate_pdf(report) -> bytes:
         cw = [w * 0.18, w * 0.15, w * 0.1, w * 0.15, w * 0.22, w * 0.2]
         data = [[_ph("Name"), _ph("Model"), _ph("Conn."), _ph("Firmware"), _ph("Config"), _ph("Cable Tests")]]
         for sw in switches:
-            checks = {c["check"]: c for c in sw.get("checks", [])}
+            checks = _checks_map(sw)
             ct_count = len(sw.get("cable_tests", []))
             ct_failed = sum(1 for ct in sw.get("cable_tests", []) if ct.get("status") == "fail")
             ct_text = f"{ct_count} ports" + (f" ({ct_failed} failed)" if ct_failed else "") if ct_count else ""
@@ -297,7 +307,7 @@ def generate_pdf(report) -> bytes:
 
         # Per-switch details
         for sw in switches:
-            checks = {c["check"]: c for c in sw.get("checks", [])}
+            checks = _checks_map(sw)
             elements.append(Paragraph(
                 f"<b>{_esc(sw.get('name', '(unnamed)'))}</b> — {_esc(sw.get('model', ''))} — "
                 f"Firmware: {_esc(checks.get('firmware_version', {}).get('value', ''))}",
@@ -343,7 +353,7 @@ def generate_pdf(report) -> bytes:
         cw = [w * 0.15, w * 0.1, w * 0.1, w * 0.15, w * 0.22, w * 0.14, w * 0.14]
         data = [[_ph("Name"), _ph("Model"), _ph("Conn."), _ph("Firmware"), _ph("Config"), _ph("WAN"), _ph("LAN")]]
         for gw in gateways:
-            checks = {c["check"]: c for c in gw.get("checks", [])}
+            checks = _checks_map(gw)
             wan_s = checks.get("wan_port_status", {}).get("status", "info")
             lan_s = checks.get("lan_port_status", {}).get("status", "info")
             data.append([
@@ -393,6 +403,35 @@ def generate_pdf(report) -> bytes:
 
             elements.append(Spacer(1, 0.3 * cm))
 
+    # ── Device Events ──
+    all_device_events: list[tuple[str, str, dict]] = []  # (device_type, device_name, event)
+    for dtype, dkey in [("Access Point", "aps"), ("Switch", "switches"), ("Gateway", "gateways")]:
+        for dev in result.get(dkey, []):
+            for ev in dev.get("events", []):
+                all_device_events.append((dtype, dev.get("name", dev.get("mac", "")), ev))
+
+    if all_device_events:
+        elements.append(Paragraph(f"Device Events ({len(all_device_events)})", heading_style))
+        w = _PAGE_WIDTH
+        cw = [w * 0.12, w * 0.14, w * 0.22, w * 0.14, w * 0.10, w * 0.10, w * 0.18]
+        data = [[_ph("Device Type"), _ph("Device"), _ph("Event"), _ph("Sub-ID"), _ph("Status"), _ph("Triggers"), _ph("Last Change")]]
+        for dtype, dname, ev in all_device_events:
+            status = ev.get("status", "")
+            status_style = _CELL_RED if status == "triggered" else _CELL_GREEN
+            ts = ev.get("last_change", 0)
+            ts_str = _dt.datetime.fromtimestamp(ts, tz=_dt.timezone.utc).strftime("%Y-%m-%d %H:%M") if ts else ""
+            data.append([
+                _p(dtype),
+                _p(_esc(dname)),
+                _p(ev.get("display", ev.get("category", ""))),
+                _p(ev.get("sub_id") or ""),
+                Paragraph(f"<b>{status}</b>", status_style),
+                _p(str(ev.get("trigger_count", 0))),
+                _p(ts_str),
+            ])
+        elements.append(_make_table(data, cw))
+        elements.append(Spacer(1, 0.3 * cm))
+
     doc.build(elements)
     return buf.getvalue()
 
@@ -438,7 +477,7 @@ def generate_csv_zip(report) -> bytes:
         if aps:
             ap_rows: list[dict] = []
             for ap in aps:
-                checks = {c["check"]: c.get("value", "") for c in ap.get("checks", [])}
+                checks = _checks_values(ap)
                 lldp = ap.get("lldp_neighbor", {})
                 ap_rows.append({
                     "name": ap.get("name", ""), "device_id": ap.get("device_id", ""),
@@ -461,7 +500,7 @@ def generate_csv_zip(report) -> bytes:
         if switches:
             sw_rows: list[dict] = []
             for sw in switches:
-                checks = {c["check"]: c.get("value", "") for c in sw.get("checks", [])}
+                checks = _checks_values(sw)
                 sw_rows.append({
                     "name": sw.get("name", ""), "device_id": sw.get("device_id", ""),
                     "mac": sw.get("mac", ""), "model": sw.get("model", ""),
@@ -494,7 +533,7 @@ def generate_csv_zip(report) -> bytes:
         if gateways:
             gw_rows: list[dict] = []
             for gw in gateways:
-                checks = {c["check"]: c.get("value", "") for c in gw.get("checks", [])}
+                checks = _checks_values(gw)
                 gw_rows.append({
                     "name": gw.get("name", ""), "device_id": gw.get("device_id", ""),
                     "mac": gw.get("mac", ""), "model": gw.get("model", ""),
@@ -542,6 +581,31 @@ def generate_csv_zip(report) -> bytes:
                 zf.writestr("gateway_lan_ports.csv", _dict_list_to_csv(lan_rows, ["gateway_name", "interface", "network", "up", "neighbor_system_name", "neighbor_port_desc"]))
             if net_rows:
                 zf.writestr("gateway_networks.csv", _dict_list_to_csv(net_rows, ["gateway_name", "network", "gateway_ip", "dhcp_status", "dhcp_pool", "dhcp_relay_servers"]))
+
+        # Device events
+        ev_rows: list[dict] = []
+        for dtype, dkey in [("ap", "aps"), ("switch", "switches"), ("gateway", "gateways")]:
+            for dev in result.get(dkey, []):
+                for ev in dev.get("events", []):
+                    ts = ev.get("last_change", 0)
+                    ts_str = _dt.datetime.fromtimestamp(ts, tz=_dt.timezone.utc).strftime("%Y-%m-%d %H:%M") if ts else ""
+                    ev_rows.append({
+                        "device_type": dtype,
+                        "device_name": dev.get("name", ""),
+                        "device_mac": dev.get("mac", ""),
+                        "category": ev.get("category", ""),
+                        "display": ev.get("display", ""),
+                        "sub_id": ev.get("sub_id") or "",
+                        "status": ev.get("status", ""),
+                        "trigger_count": ev.get("trigger_count", 0),
+                        "clear_count": ev.get("clear_count", 0),
+                        "last_change": ts_str,
+                    })
+        if ev_rows:
+            zf.writestr("device_events.csv", _dict_list_to_csv(ev_rows, [
+                "device_type", "device_name", "device_mac", "category", "display",
+                "sub_id", "status", "trigger_count", "clear_count", "last_change",
+            ]))
 
     return buf.getvalue()
 

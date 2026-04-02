@@ -1,0 +1,42 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  padding: 2px 8px;
+  border-radius: 3px;
+  white-space: nowrap;
+  line-height: 1.2;
+
+  &.status-pass,
+  &.status-completed {
+    background: var(--status-pass-bg);
+    color: #1a6b00;
+  }
+
+  &.status-fail,
+  &.status-failed {
+    background: var(--status-fail-bg);
+    color: #870101;
+  }
+
+  &.status-warn {
+    background: var(--status-warn-bg);
+    color: #92400e;
+  }
+
+  &.status-info,
+  &.status-running,
+  &.status-pending {
+    background: var(--status-info-bg);
+    color: #015c95;
+  }
+}
+
+.badge-icon {
+  font-size: 14px;
+  width: 14px;
+  height: 14px;
+}

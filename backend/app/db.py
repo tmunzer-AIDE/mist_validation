@@ -110,6 +110,11 @@ async def update_job(job_id: str, **kwargs) -> None:
     if not kwargs:
         return
 
+    _ALLOWED_COLUMNS = {"site_name", "status", "progress", "result", "error", "completed_at"}
+    bad = set(kwargs) - _ALLOWED_COLUMNS
+    if bad:
+        raise ValueError(f"update_job: unknown columns {bad}")
+
     # Serialize dict fields to JSON strings
     for key in ("progress", "result"):
         if key in kwargs and isinstance(kwargs[key], dict):
@@ -134,6 +139,13 @@ async def list_user_jobs(mist_user_id: str) -> list[dict]:
             rows = await cursor.fetchall()
             description = cursor.description
     return [_deserialize_row(_row_to_dict(row, description)) for row in rows]
+
+
+async def delete_job(job_id: str) -> None:
+    """Delete a single report job by ID."""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute("DELETE FROM reports WHERE id = ?", (job_id,))
+        await db.commit()
 
 
 async def cleanup_old_jobs() -> None:

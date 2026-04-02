@@ -24,7 +24,7 @@
             "production": {
               "budgets": [
                 { "type": "initial", "maximumWarning": "1MB", "maximumError": "2MB" },
-                { "type": "anyComponentStyle", "maximumWarning": "4kB", "maximumError": "8kB" }
+                { "type": "anyComponentStyle", "maximumWarning": "8kB", "maximumError": "16kB" }
               ],
               "outputHashing": "all"
             },
@@ -37,6 +37,9 @@
           "defaultConfiguration": "production"
         },
         "serve": {
+          "options": {
+                        "port": 58252
+                    },
           "builder": "@angular/build:dev-server",
           "configurations": {
             "production": { "buildTarget": "mist-reports:build:production" },

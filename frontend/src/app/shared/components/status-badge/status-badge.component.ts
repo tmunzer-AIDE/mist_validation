@@ -1,5 +1,5 @@
 import { Component, computed, input } from '@angular/core';
-import { MatChipsModule } from '@angular/material/chips';
+import { MatIconModule } from '@angular/material/icon';
 
 function statusLabel(s: string): string {
   switch (s) {
@@ -22,17 +22,36 @@ function statusLabel(s: string): string {
   }
 }
 
+function statusIcon(s: string): string {
+  switch (s) {
+    case 'pass':
+    case 'completed':
+      return 'check_circle';
+    case 'fail':
+    case 'failed':
+      return 'cancel';
+    case 'warn':
+      return 'warning';
+    case 'pending':
+      return 'schedule';
+    case 'running':
+      return 'hourglass_empty';
+    default:
+      return 'info';
+  }
+}
+
 @Component({
   selector: 'app-status-badge',
   standalone: true,
-  imports: [MatChipsModule],
-  template: `
-    <mat-chip [class]="'status-' + status()">{{ displayLabel() }}</mat-chip>
-  `,
+  imports: [MatIconModule],
+  templateUrl: './status-badge.component.html',
+  styleUrl: './status-badge.component.scss',
 })
 export class StatusBadgeComponent {
   status = input<string>('info');
   label = input<string>('');
 
   displayLabel = computed(() => this.label() || statusLabel(this.status()));
+  icon = computed(() => statusIcon(this.status()));
 }

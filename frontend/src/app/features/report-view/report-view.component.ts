@@ -1,5 +1,6 @@
 import {
   Component,
+  computed,
   EventEmitter,
   OnDestroy,
   OnInit,
@@ -11,7 +12,7 @@ import {
 import { DatePipe, TitleCasePipe } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
-import { MatChipsModule } from '@angular/material/chips';
+
 import { MatDividerModule } from '@angular/material/divider';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatIconModule } from '@angular/material/icon';
@@ -22,13 +23,13 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDialog } from '@angular/material/dialog';
 import { ApiService } from '../../core/services/api.service';
 import { WsService } from '../../core/services/ws.service';
-import { AuthInfo } from '../../app.component';
 import { StatusBadgeComponent } from '../../shared/components/status-badge/status-badge.component';
 import {
   DeviceDetailDialogComponent,
   SwitchResult,
   GatewayResult,
   DeviceCheck,
+  DeviceEvent,
   DeviceResult,
 } from './device-detail-dialog.component';
 
@@ -68,7 +69,6 @@ interface ReportResult {
 
 interface ReportResponse {
   id: string;
-  mist_user_id: string;
   org_id: string;
   site_id: string;
   site_name: string;
@@ -90,9 +90,9 @@ function getCheckStatus(checks: DeviceCheck[], checkId: string): string {
   return checks.find((c) => c.check === checkId)?.status ?? 'info';
 }
 
-function deviceOverallStatus(checks: DeviceCheck[]): string {
-  if (checks.some((c) => c.status === 'fail')) return 'fail';
-  if (checks.some((c) => c.status === 'warn')) return 'warn';
+function worstStatus(items: { status: string }[]): string {
+  if (items.some((i) => i.status === 'fail')) return 'fail';
+  if (items.some((i) => i.status === 'warn')) return 'warn';
   return 'pass';
 }
 
@@ -104,7 +104,6 @@ function deviceOverallStatus(checks: DeviceCheck[]): string {
     TitleCasePipe,
     MatButtonModule,
     MatCardModule,
-    MatChipsModule,
     MatDividerModule,
     MatExpansionModule,
     MatIconModule,
@@ -114,669 +113,12 @@ function deviceOverallStatus(checks: DeviceCheck[]): string {
     MatTooltipModule,
     StatusBadgeComponent,
   ],
-  styles: [
-    `
-      .page-container {
-        max-width: 1400px;
-        margin: 0 auto;
-        padding: 24px 16px;
-      }
-      .topbar {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-bottom: 24px;
-      }
-      .topbar-title {
-        font-size: 20px;
-        font-weight: 500;
-        flex: 1;
-      }
-      .topbar-meta {
-        font-size: 13px;
-        color: rgba(0, 0, 0, 0.54);
-      }
-      .section {
-        margin-bottom: 24px;
-      }
-      .section-title {
-        font-size: 15px;
-        font-weight: 500;
-        margin-bottom: 12px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-      .info-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-        gap: 16px;
-      }
-      .info-cell label {
-        font-size: 11px;
-        font-weight: 500;
-        color: rgba(0, 0, 0, 0.54);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        display: block;
-        margin-bottom: 4px;
-      }
-      .info-cell .value {
-        font-size: 14px;
-      }
-      .summary-cards {
-        display: flex;
-        gap: 16px;
-        flex-wrap: wrap;
-        margin-bottom: 24px;
-      }
-      .summary-card {
-        flex: 1;
-        min-width: 120px;
-        text-align: center;
-        padding: 16px;
-        border-radius: 8px;
-      }
-      .summary-card .count {
-        font-size: 32px;
-        font-weight: 300;
-        line-height: 1;
-      }
-      .summary-card .label {
-        font-size: 12px;
-        color: rgba(0, 0, 0, 0.54);
-        margin-top: 4px;
-      }
-      .device-cards {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 16px;
-        margin-bottom: 24px;
-      }
-      @media (max-width: 700px) {
-        .device-cards {
-          grid-template-columns: 1fr;
-        }
-      }
-      .device-stat-card {
-        padding: 20px;
-        border-left: 4px solid #1976d2;
-        border-radius: 4px;
-      }
-      .device-stat-card.has-failures {
-        border-left-color: #f44336;
-      }
-      .device-stat-card .dtype {
-        font-size: 12px;
-        font-weight: 500;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        color: rgba(0, 0, 0, 0.54);
-      }
-      .device-stat-card .total {
-        font-size: 28px;
-        font-weight: 300;
-      }
-      .device-stat-card .failed {
-        font-size: 13px;
-        color: #f44336;
-      }
-      .chip-list {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin-bottom: 12px;
-      }
-      .result-chip {
-        font-size: 13px;
-        background: #e3f2fd;
-        color: #1565c0;
-        padding: 2px 10px;
-        border-radius: 12px;
-        display: inline-block;
-      }
-      .chip-label {
-        font-size: 12px;
-        font-weight: 500;
-        color: rgba(0, 0, 0, 0.54);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-bottom: 6px;
-      }
-      .progress-steps {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        margin-top: 12px;
-      }
-      .step-row {
-        display: flex;
-        align-items: flex-start;
-        gap: 10px;
-      }
-      .step-icon {
-        margin-top: 2px;
-      }
-      .step-icon.done {
-        color: #4caf50;
-      }
-      .step-icon.running {
-        color: #1976d2;
-      }
-      .step-icon.pending {
-        color: rgba(0, 0, 0, 0.38);
-      }
-      .step-icon.failed {
-        color: #f44336;
-      }
-      .step-label {
-        font-size: 14px;
-        font-weight: 500;
-      }
-      .step-msg {
-        font-size: 12px;
-        color: rgba(0, 0, 0, 0.54);
-      }
-      .progress-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 8px;
-      }
-      .export-row {
-        display: flex;
-        gap: 12px;
-        margin-bottom: 24px;
-      }
-      .table-wrap {
-        overflow-x: auto;
-        border-radius: 8px;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-        margin-bottom: 24px;
-      }
-      table {
-        width: 100%;
-      }
-      tr.clickable-row {
-        cursor: pointer;
-      }
-      tr.clickable-row:hover {
-        background: rgba(25, 118, 210, 0.04);
-      }
-      .failed-view {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        padding: 48px 0;
-        text-align: center;
-      }
-      .failed-icon {
-        font-size: 48px;
-        width: 48px;
-        height: 48px;
-        color: #f44336;
-        margin-bottom: 16px;
-      }
-      mat-card {
-        padding: 20px;
-        margin-bottom: 0;
-      }
-    `,
-  ],
-  template: `
-    <div class="page-container">
-      <!-- Topbar -->
-      <div class="topbar">
-        <button mat-icon-button (click)="back.emit()" matTooltip="Back to site selector">
-          <mat-icon>arrow_back</mat-icon>
-        </button>
-        <div class="topbar-title">
-          {{ report()?.site_name ?? 'Validation Report' }}
-        </div>
-        @if (report()) {
-          <div class="topbar-meta">
-            {{ report()!.created_at | date: 'MMM d, y HH:mm' }}
-          </div>
-          <app-status-badge [status]="report()!.status" />
-        }
-      </div>
-
-      @if (!report()) {
-        <div style="display:flex;justify-content:center;padding:80px 0;">
-          <mat-spinner></mat-spinner>
-        </div>
-      }
-
-      <!-- Progress view: pending or running -->
-      @if (report() && (report()!.status === 'pending' || report()!.status === 'running')) {
-        <mat-card class="section">
-          <div class="progress-header">
-            <div style="font-size:15px;font-weight:500;">Running validation...</div>
-            @if (report()!.progress.overall_total > 0) {
-              <div style="font-size:13px;color:rgba(0,0,0,.54);">
-                {{ report()!.progress.overall_completed }} / {{ report()!.progress.overall_total }}
-              </div>
-            }
-          </div>
-
-          <mat-progress-bar
-            [mode]="report()!.progress.overall_total === 0 ? 'indeterminate' : 'determinate'"
-            [value]="progressPercent()"
-          ></mat-progress-bar>
-
-          <div class="progress-steps">
-            @for (step of report()!.progress.steps; track step.id) {
-              <div class="step-row">
-                <mat-icon class="step-icon" [class]="stepIconClass(step.status)">
-                  {{ stepIcon(step.status) }}
-                </mat-icon>
-                <div>
-                  <div class="step-label">{{ step.label }}</div>
-                  @if (step.message) {
-                    <div class="step-msg">{{ step.message }}</div>
-                  }
-                </div>
-              </div>
-            }
-          </div>
-        </mat-card>
-      }
-
-      <!-- Failed view -->
-      @if (report() && report()!.status === 'failed') {
-        <mat-card>
-          <div class="failed-view">
-            <mat-icon class="failed-icon">error_outline</mat-icon>
-            <div style="font-size:18px;font-weight:500;margin-bottom:8px;">Report Failed</div>
-            <div style="color:rgba(0,0,0,.54);max-width:480px;">
-              {{ report()?.error ?? 'An unexpected error occurred during validation.' }}
-            </div>
-            <button mat-stroked-button style="margin-top:24px;" (click)="back.emit()">
-              Back to Site Selector
-            </button>
-          </div>
-        </mat-card>
-      }
-
-      <!-- Completed view -->
-      @if (report() && report()!.status === 'completed' && report()!.result) {
-        <!-- Export buttons -->
-        <div class="export-row">
-          <button mat-stroked-button (click)="exportPdf()">
-            <mat-icon>picture_as_pdf</mat-icon>
-            Export PDF
-          </button>
-          <button mat-stroked-button (click)="exportCsv()">
-            <mat-icon>download</mat-icon>
-            Export CSV
-          </button>
-        </div>
-
-        <!-- Summary chips -->
-        <div class="summary-cards">
-          <mat-card class="summary-card" style="border-top:3px solid #4caf50;">
-            <div class="count status-pass">{{ report()!.result!.summary.pass }}</div>
-            <div class="label">Passed</div>
-          </mat-card>
-          <mat-card class="summary-card" style="border-top:3px solid #f44336;">
-            <div class="count status-fail">{{ report()!.result!.summary.fail }}</div>
-            <div class="label">Failed</div>
-          </mat-card>
-          <mat-card class="summary-card" style="border-top:3px solid #ff9800;">
-            <div class="count status-warn">{{ report()!.result!.summary.warn }}</div>
-            <div class="label">Warnings</div>
-          </mat-card>
-          <mat-card class="summary-card" style="border-top:3px solid #2196f3;">
-            <div class="count status-info">{{ report()!.result!.summary.info }}</div>
-            <div class="label">Info</div>
-          </mat-card>
-        </div>
-
-        <!-- Site info -->
-        <mat-card class="section">
-          <div class="section-title">
-            <mat-icon>location_on</mat-icon> Site Information
-          </div>
-          <div class="info-grid" style="margin-bottom:16px;">
-            <div class="info-cell">
-              <label>Site Name</label>
-              <div class="value">{{ report()!.result!.site_info.site_name }}</div>
-            </div>
-            <div class="info-cell">
-              <label>Address</label>
-              <div class="value">{{ report()!.result!.site_info.site_address || '—' }}</div>
-            </div>
-          </div>
-
-          @if (report()!.result!.site_info.site_groups.length) {
-            <div class="chip-label">Site Groups</div>
-            <div class="chip-list">
-              @for (g of report()!.result!.site_info.site_groups; track g) {
-                <span class="result-chip">{{ g }}</span>
-              }
-            </div>
-          }
-
-          @if (report()!.result!.site_info.templates.length) {
-            <div class="chip-label">Templates</div>
-            <div class="chip-list">
-              @for (t of report()!.result!.site_info.templates; track t.name) {
-                <span class="result-chip">{{ t.type }}: {{ t.name }}</span>
-              }
-            </div>
-          }
-
-          @if (
-            report()!.result!.site_info.org_wlans.length ||
-            report()!.result!.site_info.site_wlans.length
-          ) {
-            <div class="chip-label">WLANs</div>
-            <div class="chip-list">
-              @for (w of report()!.result!.site_info.org_wlans; track w.ssid) {
-                <span class="result-chip" style="background:#f3e5f5;color:#6a1b9a;">
-                  org: {{ w.ssid }}
-                </span>
-              }
-              @for (w of report()!.result!.site_info.site_wlans; track w.ssid) {
-                <span class="result-chip" style="background:#e8f5e9;color:#2e7d32;">
-                  site: {{ w.ssid }}
-                </span>
-              }
-            </div>
-          }
-        </mat-card>
-
-        <!-- Device summary -->
-        <div class="device-cards">
-          @for (dtype of deviceSummaryEntries(); track dtype.key) {
-            <mat-card
-              class="device-stat-card"
-              [class.has-failures]="dtype.value.failed > 0"
-            >
-              <div class="dtype">{{ dtype.key | titlecase }}</div>
-              <div class="total">{{ dtype.value.total }}</div>
-              <div class="failed">
-                @if (dtype.value.failed > 0) {
-                  {{ dtype.value.failed }} failed
-                } @else {
-                  All healthy
-                }
-              </div>
-            </mat-card>
-          }
-        </div>
-
-        <!-- Template variables -->
-        @if (report()!.result!.template_variables.length) {
-          <mat-expansion-panel class="section" style="margin-bottom:24px;">
-            <mat-expansion-panel-header>
-              <mat-panel-title>
-                Template Variables ({{ report()!.result!.template_variables.length }})
-              </mat-panel-title>
-            </mat-expansion-panel-header>
-            <div class="table-wrap" style="margin-top:12px;">
-              <table mat-table [dataSource]="report()!.result!.template_variables">
-                <ng-container matColumnDef="status">
-                  <th mat-header-cell *matHeaderCellDef>Status</th>
-                  <td mat-cell *matCellDef="let r">
-                    <app-status-badge [status]="r.status" />
-                  </td>
-                </ng-container>
-                <ng-container matColumnDef="template">
-                  <th mat-header-cell *matHeaderCellDef>Template</th>
-                  <td mat-cell *matCellDef="let r">{{ r.template }}</td>
-                </ng-container>
-                <ng-container matColumnDef="variable">
-                  <th mat-header-cell *matHeaderCellDef>Variable</th>
-                  <td mat-cell *matCellDef="let r">{{ r.variable }}</td>
-                </ng-container>
-                <ng-container matColumnDef="value">
-                  <th mat-header-cell *matHeaderCellDef>Value</th>
-                  <td mat-cell *matCellDef="let r">{{ r.value || '—' }}</td>
-                </ng-container>
-                <tr mat-header-row *matHeaderRowDef="tvColumns"></tr>
-                <tr mat-row *matRowDef="let row; columns: tvColumns;"></tr>
-              </table>
-            </div>
-          </mat-expansion-panel>
-        }
-
-        <!-- APs table -->
-        @if (report()!.result!.aps.length) {
-          <div class="section">
-            <div class="section-title">
-              <mat-icon>wifi</mat-icon>
-              Access Points ({{ report()!.result!.aps.length }})
-            </div>
-            <div class="table-wrap">
-              <table mat-table [dataSource]="report()!.result!.aps">
-                <ng-container matColumnDef="status">
-                  <th mat-header-cell *matHeaderCellDef>Status</th>
-                  <td mat-cell *matCellDef="let r">
-                    <app-status-badge [status]="deviceOverallStatus(r.checks)" />
-                  </td>
-                </ng-container>
-                <ng-container matColumnDef="name">
-                  <th mat-header-cell *matHeaderCellDef>Name</th>
-                  <td mat-cell *matCellDef="let r">{{ r.name }}</td>
-                </ng-container>
-                <ng-container matColumnDef="model">
-                  <th mat-header-cell *matHeaderCellDef>Model</th>
-                  <td mat-cell *matCellDef="let r">{{ r.model }}</td>
-                </ng-container>
-                <ng-container matColumnDef="connection">
-                  <th mat-header-cell *matHeaderCellDef>Connection</th>
-                  <td mat-cell *matCellDef="let r">
-                    <app-status-badge
-                      [status]="getCheckStatus(r.checks, 'connection')"
-                      [label]="getCheckValue(r.checks, 'connection')"
-                    />
-                  </td>
-                </ng-container>
-                <ng-container matColumnDef="firmware">
-                  <th mat-header-cell *matHeaderCellDef>Firmware</th>
-                  <td mat-cell *matCellDef="let r">
-                    <span [class]="'status-' + getCheckStatus(r.checks, 'firmware')">
-                      {{ getCheckValue(r.checks, 'firmware') || '—' }}
-                    </span>
-                  </td>
-                </ng-container>
-                <ng-container matColumnDef="eth0_speed">
-                  <th mat-header-cell *matHeaderCellDef>Eth0 Speed</th>
-                  <td mat-cell *matCellDef="let r">
-                    <span [class]="'status-' + getCheckStatus(r.checks, 'eth0_speed')">
-                      {{ getCheckValue(r.checks, 'eth0_speed') || '—' }}
-                    </span>
-                  </td>
-                </ng-container>
-                <ng-container matColumnDef="power">
-                  <th mat-header-cell *matHeaderCellDef>Power</th>
-                  <td mat-cell *matCellDef="let r">
-                    <span [class]="'status-' + getCheckStatus(r.checks, 'power')">
-                      {{ getCheckValue(r.checks, 'power') || '—' }}
-                    </span>
-                  </td>
-                </ng-container>
-                <ng-container matColumnDef="config">
-                  <th mat-header-cell *matHeaderCellDef>Config</th>
-                  <td mat-cell *matCellDef="let r">
-                    <app-status-badge
-                      [status]="getCheckStatus(r.checks, 'config')"
-                      [label]="getCheckValue(r.checks, 'config')"
-                    />
-                  </td>
-                </ng-container>
-                <ng-container matColumnDef="lldp">
-                  <th mat-header-cell *matHeaderCellDef>LLDP</th>
-                  <td mat-cell *matCellDef="let r">
-                    <span [class]="'status-' + getCheckStatus(r.checks, 'lldp')">
-                      {{ getCheckValue(r.checks, 'lldp') || '—' }}
-                    </span>
-                  </td>
-                </ng-container>
-                <tr mat-header-row *matHeaderRowDef="apColumns"></tr>
-                <tr mat-row *matRowDef="let row; columns: apColumns;"></tr>
-              </table>
-            </div>
-          </div>
-        }
-
-        <!-- Switches table -->
-        @if (report()!.result!.switches.length) {
-          <div class="section">
-            <div class="section-title">
-              <mat-icon>device_hub</mat-icon>
-              Switches ({{ report()!.result!.switches.length }})
-            </div>
-            <div class="table-wrap">
-              <table mat-table [dataSource]="report()!.result!.switches">
-                <ng-container matColumnDef="status">
-                  <th mat-header-cell *matHeaderCellDef>Status</th>
-                  <td mat-cell *matCellDef="let r">
-                    <app-status-badge [status]="deviceOverallStatus(r.checks)" />
-                  </td>
-                </ng-container>
-                <ng-container matColumnDef="name">
-                  <th mat-header-cell *matHeaderCellDef>Name</th>
-                  <td mat-cell *matCellDef="let r">{{ r.name }}</td>
-                </ng-container>
-                <ng-container matColumnDef="model">
-                  <th mat-header-cell *matHeaderCellDef>Model</th>
-                  <td mat-cell *matCellDef="let r">{{ r.model }}</td>
-                </ng-container>
-                <ng-container matColumnDef="connection">
-                  <th mat-header-cell *matHeaderCellDef>Connection</th>
-                  <td mat-cell *matCellDef="let r">
-                    <app-status-badge
-                      [status]="getCheckStatus(r.checks, 'connection')"
-                      [label]="getCheckValue(r.checks, 'connection')"
-                    />
-                  </td>
-                </ng-container>
-                <ng-container matColumnDef="firmware">
-                  <th mat-header-cell *matHeaderCellDef>Firmware</th>
-                  <td mat-cell *matCellDef="let r">
-                    <span [class]="'status-' + getCheckStatus(r.checks, 'firmware')">
-                      {{ getCheckValue(r.checks, 'firmware') || '—' }}
-                    </span>
-                  </td>
-                </ng-container>
-                <ng-container matColumnDef="config">
-                  <th mat-header-cell *matHeaderCellDef>Config</th>
-                  <td mat-cell *matCellDef="let r">
-                    <app-status-badge
-                      [status]="getCheckStatus(r.checks, 'config')"
-                      [label]="getCheckValue(r.checks, 'config')"
-                    />
-                  </td>
-                </ng-container>
-                <ng-container matColumnDef="cable_tests">
-                  <th mat-header-cell *matHeaderCellDef>Cable Tests</th>
-                  <td mat-cell *matCellDef="let r">
-                    @if (r.cable_tests?.length) {
-                      <span [class]="'status-' + cableTestStatus(r.cable_tests)">
-                        {{ r.cable_tests.length }} tests
-                      </span>
-                    } @else {
-                      <span style="color:rgba(0,0,0,.38);">—</span>
-                    }
-                  </td>
-                </ng-container>
-                <tr mat-header-row *matHeaderRowDef="switchColumns"></tr>
-                <tr
-                  mat-row
-                  *matRowDef="let row; columns: switchColumns;"
-                  class="clickable-row"
-                  (click)="openDeviceDetail(row, 'switch')"
-                ></tr>
-              </table>
-            </div>
-          </div>
-        }
-
-        <!-- Gateways table -->
-        @if (report()!.result!.gateways.length) {
-          <div class="section">
-            <div class="section-title">
-              <mat-icon>router</mat-icon>
-              Gateways ({{ report()!.result!.gateways.length }})
-            </div>
-            <div class="table-wrap">
-              <table mat-table [dataSource]="report()!.result!.gateways">
-                <ng-container matColumnDef="status">
-                  <th mat-header-cell *matHeaderCellDef>Status</th>
-                  <td mat-cell *matCellDef="let r">
-                    <app-status-badge [status]="deviceOverallStatus(r.checks)" />
-                  </td>
-                </ng-container>
-                <ng-container matColumnDef="name">
-                  <th mat-header-cell *matHeaderCellDef>Name</th>
-                  <td mat-cell *matCellDef="let r">{{ r.name }}</td>
-                </ng-container>
-                <ng-container matColumnDef="model">
-                  <th mat-header-cell *matHeaderCellDef>Model</th>
-                  <td mat-cell *matCellDef="let r">{{ r.model }}</td>
-                </ng-container>
-                <ng-container matColumnDef="connection">
-                  <th mat-header-cell *matHeaderCellDef>Connection</th>
-                  <td mat-cell *matCellDef="let r">
-                    <app-status-badge
-                      [status]="getCheckStatus(r.checks, 'connection')"
-                      [label]="getCheckValue(r.checks, 'connection')"
-                    />
-                  </td>
-                </ng-container>
-                <ng-container matColumnDef="firmware">
-                  <th mat-header-cell *matHeaderCellDef>Firmware</th>
-                  <td mat-cell *matCellDef="let r">
-                    <span [class]="'status-' + getCheckStatus(r.checks, 'firmware')">
-                      {{ getCheckValue(r.checks, 'firmware') || '—' }}
-                    </span>
-                  </td>
-                </ng-container>
-                <ng-container matColumnDef="config">
-                  <th mat-header-cell *matHeaderCellDef>Config</th>
-                  <td mat-cell *matCellDef="let r">
-                    <app-status-badge
-                      [status]="getCheckStatus(r.checks, 'config')"
-                      [label]="getCheckValue(r.checks, 'config')"
-                    />
-                  </td>
-                </ng-container>
-                <ng-container matColumnDef="wan">
-                  <th mat-header-cell *matHeaderCellDef>WAN</th>
-                  <td mat-cell *matCellDef="let r">
-                    <span [class]="'status-' + getCheckStatus(r.checks, 'wan')">
-                      {{ getCheckValue(r.checks, 'wan') || '—' }}
-                    </span>
-                  </td>
-                </ng-container>
-                <ng-container matColumnDef="lan">
-                  <th mat-header-cell *matHeaderCellDef>LAN</th>
-                  <td mat-cell *matCellDef="let r">
-                    <span [class]="'status-' + getCheckStatus(r.checks, 'lan')">
-                      {{ getCheckValue(r.checks, 'lan') || '—' }}
-                    </span>
-                  </td>
-                </ng-container>
-                <tr mat-header-row *matHeaderRowDef="gatewayColumns"></tr>
-                <tr
-                  mat-row
-                  *matRowDef="let row; columns: gatewayColumns;"
-                  class="clickable-row"
-                  (click)="openDeviceDetail(row, 'gateway')"
-                ></tr>
-              </table>
-            </div>
-          </div>
-        }
-      }
-    </div>
-  `,
+  templateUrl: './report-view.component.html',
+  styleUrl: './report-view.component.scss',
 })
 export class ReportViewComponent implements OnInit, OnDestroy {
   jobId = input.required<string>();
-  authInfo = input.required<AuthInfo>();
+
 
   @Output() back = new EventEmitter<void>();
 
@@ -786,27 +128,75 @@ export class ReportViewComponent implements OnInit, OnDestroy {
 
   report = signal<ReportResponse | null>(null);
   private wsSubscription: { unsubscribe(): void } | null = null;
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
+
+  // Aggregated template variables
+  expandedVars = signal<Set<string>>(new Set());
+
+  groupedVariables = computed(() => {
+    const r = this.report();
+    if (!r?.result?.template_variables?.length) return [];
+
+    const groups = new Map<string, { variable: string; value: string; status: string; occurrences: any[] }>();
+    for (const check of r.result.template_variables) {
+      const existing = groups.get(check.variable);
+      if (existing) {
+        existing.occurrences.push(check);
+        if (check.status === 'fail') {
+          existing.status = 'fail';
+        } else if (check.status === 'warn' && existing.status !== 'fail') {
+          existing.status = 'warn';
+        }
+      } else {
+        groups.set(check.variable, {
+          variable: check.variable,
+          value: check.value ?? '',
+          status: check.status,
+          occurrences: [check],
+        });
+      }
+    }
+    return Array.from(groups.values());
+  });
+
+  toggleVariable(varName: string): void {
+    this.expandedVars.update((set) => {
+      const next = new Set(set);
+      if (next.has(varName)) next.delete(varName);
+      else next.add(varName);
+      return next;
+    });
+  }
+
+  isVarExpanded(varName: string): boolean {
+    return this.expandedVars().has(varName);
+  }
+
+  statusIcon(status: string): string {
+    switch (status) {
+      case 'pass': return 'check_circle';
+      case 'fail': return 'cancel';
+      case 'warn': return 'warning';
+      default: return 'info';
+    }
+  }
 
   // Table column definitions
-  tvColumns = ['status', 'template', 'variable', 'value'];
-  apColumns = [
-    'status',
-    'name',
-    'model',
-    'connection',
-    'firmware',
-    'eth0_speed',
-    'power',
-    'config',
-    'lldp',
-  ];
-  switchColumns = ['status', 'name', 'model', 'connection', 'firmware', 'config', 'cable_tests'];
-  gatewayColumns = ['status', 'name', 'model', 'connection', 'firmware', 'config', 'wan', 'lan'];
+  apColumns = ['status', 'name', 'model', 'connection', 'firmware', 'eth0_speed', 'power', 'config', 'lldp', 'events'];
+  switchColumns = ['status', 'name', 'model', 'connection', 'firmware', 'config', 'cable_tests', 'events'];
+  gatewayColumns = ['status', 'name', 'model', 'connection', 'firmware', 'config', 'wan', 'lan', 'events'];
 
   // Expose helpers to template
   getCheckValue = getCheckValue;
   getCheckStatus = getCheckStatus;
-  deviceOverallStatus = deviceOverallStatus;
+  deviceOverallStatus = worstStatus;
+
+  lldpDisplay(device: DeviceResult & { lldp_neighbor?: { system_name?: string; port_desc?: string } }): string {
+    const lldp = device.lldp_neighbor;
+    if (!lldp) return '';
+    const parts = [lldp.system_name, lldp.port_desc].filter(Boolean);
+    return parts.join(' / ') || '';
+  }
 
   progressPercent(): number {
     const p = this.report()?.progress;
@@ -846,30 +236,52 @@ export class ReportViewComponent implements OnInit, OnDestroy {
     }
   }
 
-  cableTestStatus(tests: { status: string }[]): string {
-    if (tests.some((t) => t.status === 'fail')) return 'fail';
-    if (tests.some((t) => t.status === 'warn')) return 'warn';
-    return 'pass';
+  cableTestStatus = worstStatus;
+
+  openEventCount(device: DeviceResult): number {
+    return (device.events ?? []).filter((e) => e.status === 'triggered').length;
   }
 
   ngOnInit(): void {
     this.loadReport();
     this.subscribeWs();
+    this.startPolling();
   }
 
   ngOnDestroy(): void {
     const channel = `report:${this.jobId()}`;
     this.ws.unsubscribe(channel);
     this.wsSubscription?.unsubscribe();
+    this.stopPolling();
   }
 
-  private authHeaders(): Record<string, string> {
-    return { 'X-Mist-User-Id': this.authInfo().user_id };
+  private startPolling(): void {
+    this.pollTimer = setInterval(() => {
+      const status = this.report()?.status;
+      if (status === 'pending' || status === 'running') {
+        this.loadReport();
+      } else {
+        this.stopPolling();
+      }
+    }, 5000);
+  }
+
+  private stopPolling(): void {
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
   }
 
   loadReport(): void {
-    this.api.get<ReportResponse>(`reports/${this.jobId()}`, this.authHeaders()).subscribe({
-      next: (r) => this.report.set(r),
+    this.api.get<ReportResponse>(`reports/${this.jobId()}`).subscribe({
+      next: (r) => {
+        this.report.set(r);
+        if (r.status === 'completed' || r.status === 'failed') {
+          this.stopPolling();
+        }
+      },
+      error: () => this.stopPolling(),
     });
   }
 
@@ -879,7 +291,7 @@ export class ReportViewComponent implements OnInit, OnDestroy {
     this.wsSubscription = this.ws.channel$(channel).subscribe((msg) => {
       const type = msg['type'] as string;
 
-      if (type === 'progress' || type === 'report_progress') {
+      if (type === 'report_progress') {
         const current = this.report();
         const data = msg['data'] as {
           status?: ReportResponse['status'];
@@ -900,12 +312,11 @@ export class ReportViewComponent implements OnInit, OnDestroy {
         }
       }
 
-      if (type === 'report_complete' || type === 'complete') {
-        // Re-fetch full report including result payload
+      if (type === 'report_complete') {
         this.loadReport();
       }
 
-      if (type === 'report_failed' || type === 'failed') {
+      if (type === 'report_failed') {
         const current = this.report();
         if (current) {
           this.report.set({
@@ -918,7 +329,7 @@ export class ReportViewComponent implements OnInit, OnDestroy {
     });
   }
 
-  openDeviceDetail(device: SwitchResult | GatewayResult, type: 'switch' | 'gateway'): void {
+  openDeviceDetail(device: DeviceResult | SwitchResult | GatewayResult, type: 'ap' | 'switch' | 'gateway'): void {
     this.dialog.open(DeviceDetailDialogComponent, {
       data: { device, type },
       width: '720px',
@@ -927,7 +338,7 @@ export class ReportViewComponent implements OnInit, OnDestroy {
   }
 
   private exportFile(path: string, filename: string): void {
-    this.api.getBlob(path, this.authHeaders()).subscribe({
+    this.api.getBlob(path).subscribe({
       next: (blob) => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');

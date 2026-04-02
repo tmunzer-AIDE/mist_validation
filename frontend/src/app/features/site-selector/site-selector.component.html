@@ -1,0 +1,164 @@
+<div class="page-container">
+  <div class="page-header">
+    <div class="page-title">Network Validation</div>
+    <div class="user-info">
+      <mat-icon style="font-size:18px;width:18px;height:18px;">person</mat-icon>
+      {{ authInfo().user_email || authInfo().token_name || 'API Token' }}
+    </div>
+  </div>
+
+  <div class="cards-row">
+    <!-- New Report card -->
+    <mat-card>
+      <mat-card-title>New Report</mat-card-title>
+
+      <!-- Org picker (only if multi-org) -->
+      @if (authInfo().orgs.length > 1) {
+        <div class="section-label">Organization</div>
+        <mat-form-field class="full-width" appearance="outline">
+          <mat-label>Select organization</mat-label>
+          <input
+            matInput
+            [matAutocomplete]="orgAuto"
+            [formControl]="orgSearchCtrl"
+            placeholder="Type to filter..."
+          />
+          <mat-autocomplete
+            #orgAuto="matAutocomplete"
+            [displayWith]="displayOrg"
+            (optionSelected)="onOrgSelected($event.option.value)"
+          >
+            @for (org of filteredOrgs(); track org.id) {
+              <mat-option [value]="org">{{ org.name }}</mat-option>
+            }
+          </mat-autocomplete>
+        </mat-form-field>
+      }
+
+      <!-- Site picker -->
+      <div class="section-label">Site</div>
+      <mat-form-field class="full-width" appearance="outline">
+        <mat-label>Select site</mat-label>
+        <input
+          matInput
+          [matAutocomplete]="siteAuto"
+          [formControl]="siteSearchCtrl"
+          placeholder="Type to filter..."
+        />
+        <mat-autocomplete
+          #siteAuto="matAutocomplete"
+          [displayWith]="displaySite"
+          (optionSelected)="selectedSite.set($event.option.value)"
+        >
+          @for (site of filteredSites(); track site.id) {
+            <mat-option [value]="site">{{ site.name }}</mat-option>
+          }
+        </mat-autocomplete>
+        @if (sitesLoading()) {
+          <mat-spinner matSuffix diameter="18"></mat-spinner>
+        }
+      </mat-form-field>
+
+      <!-- Cable tests -->
+      <mat-checkbox [formControl]="cableTestsCtrl">Include cable tests</mat-checkbox>
+      @if (cableTestsCtrl.value) {
+        <div class="cable-warn">
+          <mat-icon style="font-size:14px;width:14px;height:14px;">warning</mat-icon>
+          Cable tests can take several minutes on large deployments.
+        </div>
+      }
+
+      @if (startError()) {
+        <div class="error-msg">{{ startError() }}</div>
+      }
+
+      <button
+        mat-flat-button
+        color="primary"
+        class="full-width generate-btn"
+        [disabled]="!canGenerate() || generating()"
+        (click)="generateReport()"
+      >
+        @if (generating()) {
+          <mat-spinner diameter="18" style="display:inline-block;margin-right:8px;"></mat-spinner>
+        }
+        Generate Report
+      </button>
+    </mat-card>
+
+    <!-- Recent Reports card -->
+    <mat-card>
+      <mat-card-title>
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span>Recent Reports (last 24h)</span>
+          <button mat-icon-button (click)="loadRecentReports()" matTooltip="Refresh">
+            <mat-icon>refresh</mat-icon>
+          </button>
+        </div>
+      </mat-card-title>
+
+      @if (reportsLoading()) {
+        <div style="display:flex;justify-content:center;padding:32px 0;">
+          <mat-spinner diameter="32"></mat-spinner>
+        </div>
+      } @else if (recentReports().length === 0) {
+        <div class="no-reports">
+          <mat-icon style="font-size:40px;width:40px;height:40px;margin-bottom:8px;">
+            assignment
+          </mat-icon>
+          <div>No reports in the last 24 hours.</div>
+        </div>
+      } @else {
+        <div class="table-scroll">
+          <table mat-table [dataSource]="recentReports()" style="width:100%;">
+            <ng-container matColumnDef="site_name">
+              <th mat-header-cell *matHeaderCellDef>Site</th>
+              <td mat-cell *matCellDef="let row">{{ row.site_name }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="status">
+              <th mat-header-cell *matHeaderCellDef>Status</th>
+              <td mat-cell *matCellDef="let row">
+                <app-status-badge [status]="row.status" />
+              </td>
+            </ng-container>
+
+            <ng-container matColumnDef="created_at">
+              <th mat-header-cell *matHeaderCellDef>Created</th>
+              <td mat-cell *matCellDef="let row">
+                {{ row.created_at | date: 'MMM d, HH:mm' }}
+              </td>
+            </ng-container>
+
+            <ng-container matColumnDef="action">
+              <th mat-header-cell *matHeaderCellDef></th>
+              <td mat-cell *matCellDef="let row" class="action-cell">
+                <button
+                  mat-button
+                  color="primary"
+                  class="view-link"
+                  (click)="viewReport(row.id)"
+                >
+                  View
+                </button>
+                <button
+                  mat-icon-button
+                  matTooltip="Delete report"
+                  (click)="deleteReport(row.id)"
+                >
+                  <mat-icon>delete</mat-icon>
+                </button>
+              </td>
+            </ng-container>
+
+            <tr mat-header-row *matHeaderRowDef="reportColumns"></tr>
+            <tr mat-row *matRowDef="let row; columns: reportColumns;"></tr>
+          </table>
+        </div>
+      }
+      <div class="auto-delete-notice">
+        Reports are automatically deleted after 24 hours.
+      </div>
+    </mat-card>
+  </div>
+</div>

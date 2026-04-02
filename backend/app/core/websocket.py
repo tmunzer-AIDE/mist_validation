@@ -63,7 +63,7 @@ class WebSocketManager:
             return
         msg = {**message, "channel": channel}
         dead: list[WebSocket] = []
-        for ws in subs:
+        for ws in set(subs):  # snapshot to avoid mutation during iteration
             try:
                 if ws.client_state == WebSocketState.CONNECTED:
                     await ws.send_json(msg)
