@@ -1,3 +1,5 @@
+import os
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.deps import get_session
@@ -6,6 +8,8 @@ from app.models import SiteOption, SitesResponse
 from app.services.mist_service import ConfigurationError, MistAPIError, MistService
 
 router = APIRouter()
+
+TDR_SITE_GROUP = os.environ.get("TDR_SITE_GROUP", "tdr_validation")
 
 
 @router.get("/sites", response_model=SitesResponse)
@@ -30,7 +34,37 @@ async def list_sites(
             [SiteOption(id=s["id"], name=s.get("name", s["id"])) for s in sites],
             key=lambda x: x.name.lower(),
         )
-        return SitesResponse(sites=options)
+
+        # Resolve TDR-eligible sites
+        tdr_site_ids: list[str] = []
+        tdr_group_exists = True
+        if TDR_SITE_GROUP:
+            try:
+                site_groups = await mist.get_site_groups()
+                tdr_group = next(
+                    (g for g in site_groups if g.get("name") == TDR_SITE_GROUP),
+                    None,
+                )
+                if tdr_group:
+                    tdr_group_id = tdr_group["id"]
+                    tdr_site_ids = [
+                        s["id"] for s in sites
+                        if tdr_group_id in s.get("sitegroup_ids", [])
+                    ]
+                else:
+                    tdr_group_exists = False
+            except MistAPIError:
+                tdr_group_exists = False
+        else:
+            # TDR_SITE_GROUP is empty → no group gating, all sites eligible
+            tdr_site_ids = [s["id"] for s in sites]
+
+        return SitesResponse(
+            sites=options,
+            tdr_site_ids=tdr_site_ids,
+            tdr_group_name=TDR_SITE_GROUP,
+            tdr_group_exists=tdr_group_exists,
+        )
     except (MistAPIError, ConfigurationError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:

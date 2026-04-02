@@ -209,16 +209,22 @@ async def logout(session_id: str = Cookie(default="")):
     return response
 
 
+_ROLE_PRIORITY = {"admin": 3, "write": 2, "read": 1}
+
+
 def _orgs_from_privileges(privileges: list[dict]) -> list[dict]:
-    """Build org list from raw privileges array."""
-    orgs_seen: dict[str, str] = {}
+    """Build org list from raw privileges array (keeps highest role per org)."""
+    orgs_seen: dict[str, dict] = {}
     for priv in privileges:
         if isinstance(priv, dict) and priv.get("scope") == "org":
             org_id = priv.get("org_id", "")
             org_name = priv.get("name", "") or priv.get("org_name", "") or org_id[:8]
-            if org_id and org_id not in orgs_seen:
-                orgs_seen[org_id] = org_name
-    return [{"id": k, "name": v} for k, v in orgs_seen.items()]
+            role = priv.get("role", "read")
+            if org_id:
+                existing = orgs_seen.get(org_id)
+                if not existing or _ROLE_PRIORITY.get(role, 0) > _ROLE_PRIORITY.get(existing.get("role", ""), 0):
+                    orgs_seen[org_id] = {"id": org_id, "name": org_name, "role": role}
+    return list(orgs_seen.values())
 
 
 def _extract_user_data(user_data: dict) -> dict:

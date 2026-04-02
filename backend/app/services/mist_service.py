@@ -9,6 +9,7 @@ from typing import Any
 import mistapi
 from mistapi import APISession
 from mistapi.api.v1 import orgs as orgs_api
+from mistapi.api.v1.orgs import sitegroups as org_sitegroups
 from mistapi.api.v1.orgs import sites, templates
 from mistapi.api.v1.orgs import wlans as org_wlans
 from mistapi.api.v1.sites import devices
@@ -150,6 +151,20 @@ class MistService:
 
         except Exception as e:
             logger.error("get_sites_failed error=%s", str(e))
+            raise MistAPIError("Mist API request failed") from e
+
+    async def get_site_groups(self) -> list[dict[str, Any]]:
+        """Get all site groups in the organization."""
+        try:
+            result = await mistapi.arun(
+                org_sitegroups.listOrgSiteGroups, self.session, self.org_id, limit=1000
+            )
+            if result.status_code != 200:
+                raise MistAPIError(f"Failed to get site groups: {result.status_code}")
+            logger.debug("site_groups_retrieved org_id=%s count=%d", self.org_id, len(result.data))
+            return result.data
+        except Exception as e:
+            logger.error("get_site_groups_failed error=%s", str(e))
             raise MistAPIError("Mist API request failed") from e
 
     async def get_site(self, site_id: str) -> dict[str, Any]:

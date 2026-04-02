@@ -8,11 +8,13 @@ from fastapi.responses import Response
 
 from app import db
 from app.api.deps import get_session
+from app.api.sites import TDR_SITE_GROUP
 from app.core.session import SessionData
 from app.core.websocket import ws_manager
 from app.models import ReportCreateRequest, ReportListResponse, ReportResponse
 from app.services import validation_service
 from app.services.export_service import generate_csv_zip, generate_pdf
+from app.services.mist_service import MistService
 
 router = APIRouter()
 
@@ -60,6 +62,39 @@ async def create_report(
     # Verify org access
     if request.org_id not in session.org_ids:
         raise HTTPException(status_code=403, detail="Access denied to this organization")
+
+    # Cable test safety checks
+    if request.include_cable_tests:
+        if not session.can_write(request.org_id):
+            raise HTTPException(
+                status_code=403,
+                detail="Cable tests require write access to the organization.",
+            )
+        if TDR_SITE_GROUP:
+            mist = MistService(
+                org_id=request.org_id,
+                cloud_region=session.mist_cloud,
+                api_token=session.mist_token,
+                cookies=session.mist_cookies,
+                csrftoken=session.mist_csrftoken,
+            )
+            site_groups = await mist.get_site_groups()
+            tdr_group = next(
+                (g for g in site_groups if g.get("name") == TDR_SITE_GROUP),
+                None,
+            )
+            if not tdr_group:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Cable tests are not available. The site group '{TDR_SITE_GROUP}' does not exist.",
+                )
+            # Check site membership via site's sitegroup_ids (same as sites.py)
+            site_data = await mist.get_site(request.site_id)
+            if tdr_group["id"] not in site_data.get("sitegroup_ids", []):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Cable tests are not enabled for this site. Add it to the '{TDR_SITE_GROUP}' site group.",
+                )
 
     job_id = str(uuid.uuid4())
     org_name = _resolve_org_name(session, request.org_id)

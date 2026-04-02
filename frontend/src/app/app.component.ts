@@ -8,7 +8,7 @@ type AppState = 'login' | 'site_selector' | 'report';
 export interface AuthInfo {
   user_email: string;
   token_name: string;
-  orgs: { id: string; name: string }[];
+  orgs: { id: string; name: string; role: string }[];
   cloud: string;
   host: string;
   method: 'token' | 'credentials';
@@ -23,7 +23,7 @@ export interface AuthInfo {
 export class AppComponent {
   appState = signal<AppState>('login');
   authInfo = signal<AuthInfo | null>(null);
-  selectedOrg = signal<{ id: string; name: string } | null>(null);
+  selectedOrg = signal<{ id: string; name: string; role?: string } | null>(null);
   activeJobId = signal<string | null>(null);
 
   onAuthenticated(info: AuthInfo): void {

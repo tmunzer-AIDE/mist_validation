@@ -8,6 +8,9 @@ class SiteOption(BaseModel):
 
 class SitesResponse(BaseModel):
     sites: list[SiteOption]
+    tdr_site_ids: list[str] = []
+    tdr_group_name: str = ""
+    tdr_group_exists: bool = True
 
 
 class ReportCreateRequest(BaseModel):

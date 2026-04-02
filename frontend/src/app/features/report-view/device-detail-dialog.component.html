@@ -101,6 +101,49 @@
     <tr mat-row *matRowDef="let row; columns: lldpColumns;"></tr>
   </table>
   }
+
+  <!-- Optic Modules (switch) -->
+  @if (sortedPortOptics.length) {
+  <mat-divider></mat-divider>
+  <div class="section-title">Optic Modules</div>
+  <div class="optics-legend">Rx threshold: warn &lt; -20 dBm, fail &lt; -25 dBm &bull; Tx threshold: warn &lt; -8 dBm, fail &lt; -12 dBm</div>
+  <table mat-table [dataSource]="sortedPortOptics">
+    <ng-container matColumnDef="port_id">
+      <th mat-header-cell *matHeaderCellDef>Port</th>
+      <td mat-cell *matCellDef="let r" class="mono">{{ r.port_id }}</td>
+    </ng-container>
+    <ng-container matColumnDef="xcvr_model">
+      <th mat-header-cell *matHeaderCellDef>Model</th>
+      <td mat-cell *matCellDef="let r">{{ r.xcvr_model }}</td>
+    </ng-container>
+    <ng-container matColumnDef="xcvr_serial">
+      <th mat-header-cell *matHeaderCellDef>Serial</th>
+      <td mat-cell *matCellDef="let r" class="mono">{{ r.xcvr_serial }}</td>
+    </ng-container>
+    <ng-container matColumnDef="xcvr_part_number">
+      <th mat-header-cell *matHeaderCellDef>Part Number</th>
+      <td mat-cell *matCellDef="let r" class="mono">{{ r.xcvr_part_number }}</td>
+    </ng-container>
+    <ng-container matColumnDef="rx_power">
+      <th mat-header-cell *matHeaderCellDef>Rx Power (dBm)</th>
+      <td mat-cell *matCellDef="let r" [class]="opticsStatusClass(r.rx_power_status)">
+        {{ r.rx_power !== null ? r.rx_power : '—' }}
+      </td>
+    </ng-container>
+    <ng-container matColumnDef="tx_power">
+      <th mat-header-cell *matHeaderCellDef>Tx Power (dBm)</th>
+      <td mat-cell *matCellDef="let r" [class]="opticsStatusClass(r.tx_power_status)">
+        {{ r.tx_power !== null ? r.tx_power : '—' }}
+      </td>
+    </ng-container>
+    <ng-container matColumnDef="temperature">
+      <th mat-header-cell *matHeaderCellDef>Temp. (&deg;C)</th>
+      <td mat-cell *matCellDef="let r">{{ r.temperature !== null ? r.temperature : '—' }}</td>
+    </ng-container>
+    <tr mat-header-row *matHeaderRowDef="opticsColumns"></tr>
+    <tr mat-row *matRowDef="let row; columns: opticsColumns;"></tr>
+  </table>
+  }
   }
 
   @if (data.type === 'gateway') {
@@ -326,6 +369,49 @@
     </ng-container>
     <tr mat-header-row *matHeaderRowDef="networkColumns"></tr>
     <tr mat-row *matRowDef="let row; columns: networkColumns;"></tr>
+  </table>
+  }
+
+  <!-- Optic Modules (gateway) -->
+  @if (sortedPortOptics.length) {
+  <mat-divider></mat-divider>
+  <div class="section-title">Optic Modules</div>
+  <div class="optics-legend">Rx threshold: warn &lt; -20 dBm, fail &lt; -25 dBm &bull; Tx threshold: warn &lt; -8 dBm, fail &lt; -12 dBm</div>
+  <table mat-table [dataSource]="sortedPortOptics">
+    <ng-container matColumnDef="port_id">
+      <th mat-header-cell *matHeaderCellDef>Port</th>
+      <td mat-cell *matCellDef="let r" class="mono">{{ r.port_id }}</td>
+    </ng-container>
+    <ng-container matColumnDef="xcvr_model">
+      <th mat-header-cell *matHeaderCellDef>Model</th>
+      <td mat-cell *matCellDef="let r">{{ r.xcvr_model }}</td>
+    </ng-container>
+    <ng-container matColumnDef="xcvr_serial">
+      <th mat-header-cell *matHeaderCellDef>Serial</th>
+      <td mat-cell *matCellDef="let r" class="mono">{{ r.xcvr_serial }}</td>
+    </ng-container>
+    <ng-container matColumnDef="xcvr_part_number">
+      <th mat-header-cell *matHeaderCellDef>Part Number</th>
+      <td mat-cell *matCellDef="let r" class="mono">{{ r.xcvr_part_number }}</td>
+    </ng-container>
+    <ng-container matColumnDef="rx_power">
+      <th mat-header-cell *matHeaderCellDef>Rx Power (dBm)</th>
+      <td mat-cell *matCellDef="let r" [class]="opticsStatusClass(r.rx_power_status)">
+        {{ r.rx_power !== null ? r.rx_power : '—' }}
+      </td>
+    </ng-container>
+    <ng-container matColumnDef="tx_power">
+      <th mat-header-cell *matHeaderCellDef>Tx Power (dBm)</th>
+      <td mat-cell *matCellDef="let r" [class]="opticsStatusClass(r.tx_power_status)">
+        {{ r.tx_power !== null ? r.tx_power : '—' }}
+      </td>
+    </ng-container>
+    <ng-container matColumnDef="temperature">
+      <th mat-header-cell *matHeaderCellDef>Temp. (&deg;C)</th>
+      <td mat-cell *matCellDef="let r">{{ r.temperature !== null ? r.temperature : '—' }}</td>
+    </ng-container>
+    <tr mat-header-row *matHeaderRowDef="opticsColumns"></tr>
+    <tr mat-row *matRowDef="let row; columns: opticsColumns;"></tr>
   </table>
   }
   }

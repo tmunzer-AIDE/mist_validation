@@ -25,7 +25,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 - **Access Points** — Validates AP health, firmware, connectivity status, and configuration
 - **Switches** — Checks switch health, Virtual Chassis status, standalone and aggregated interfaces configurations and port status
 - **Gateways** — Validates gateway health and configuration, WAN and LAN ports status, standalone and aggregated interfaces configurations and port status
-- **Cable Tests** — Runs TDR cable diagnostics on switch ports (optional)
+- **Optic Modules** — Reports transceiver details (model, serial, part number) and validates Rx/Tx power levels for switches and gateways
+- **Cable Tests** — Runs TDR cable diagnostics on switch ports (optional, requires write access and site group membership)
 
 ### Report Generation
 - **PDF Reports** — Professional formatted reports with device details and status badges
@@ -111,6 +112,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8080
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `DATABASE_PATH` | String | `reports.db` | Path to SQLite database file |
+| `TDR_SITE_GROUP` | String | `tdr_validation` | Site group name for cable test eligibility. Set empty to disable group gating. |
 
 ### Docker Compose Example
 
@@ -128,6 +130,31 @@ services:
 volumes:
   mist_data:
 ```
+
+## Validation Thresholds
+
+### Optic Module Power Levels
+
+The following thresholds are applied to Rx and Tx optical power readings (in dBm) from SFP/SFP+ transceivers. These are conservative values suitable for most enterprise-grade optics.
+
+| Metric | Pass | Warning | Fail |
+|--------|------|---------|------|
+| Rx Power | >= -20 dBm | -25 to -20 dBm | < -25 dBm |
+| Tx Power | >= -8 dBm | -12 to -8 dBm | < -12 dBm |
+
+Thresholds are displayed in the web UI (device detail dialog), in the PDF report (below each optics table), and in the CSV export (`rx_power_status` / `tx_power_status` columns).
+
+### Cable Test Prerequisites
+
+Cable tests (TDR diagnostics) send commands to live switches. Two safety layers prevent accidental use on production sites:
+
+1. **Write access required** — The user must have `admin` or `write` role for the organization. Read-only users cannot trigger cable tests.
+
+2. **Site group membership** — The site must belong to a configurable site group (default: `tdr_validation`). This requires an administrator to:
+   - Create a site group named `tdr_validation` (or the value of `TDR_SITE_GROUP` env var) in the Mist dashboard
+   - Add the sites where cable tests are authorized to this group
+
+Set `TDR_SITE_GROUP` to an empty string to disable site group gating (cable tests will only require write access).
 
 ## Architecture
 

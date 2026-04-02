@@ -397,6 +397,18 @@
                 }
               </td>
             </ng-container>
+            <ng-container matColumnDef="optics">
+              <th mat-header-cell *matHeaderCellDef>Optics</th>
+              <td mat-cell *matCellDef="let r">
+                @if (getCheckValue(r.checks, 'optics_health')) {
+                  <span [class]="'status-' + getCheckStatus(r.checks, 'optics_health')">
+                    {{ getCheckValue(r.checks, 'optics_health') }}
+                  </span>
+                } @else {
+                  <span class="text-tertiary">—</span>
+                }
+              </td>
+            </ng-container>
             <ng-container matColumnDef="events">
               <th mat-header-cell *matHeaderCellDef>Events</th>
               <td mat-cell *matCellDef="let r">
@@ -489,6 +501,18 @@
                 <span [class]="'status-' + getCheckStatus(r.checks, 'lan_port_status')">
                   {{ getCheckValue(r.checks, 'lan_port_status') || '—' }}
                 </span>
+              </td>
+            </ng-container>
+            <ng-container matColumnDef="optics">
+              <th mat-header-cell *matHeaderCellDef>Optics</th>
+              <td mat-cell *matCellDef="let r">
+                @if (getCheckValue(r.checks, 'optics_health')) {
+                  <span [class]="'status-' + getCheckStatus(r.checks, 'optics_health')">
+                    {{ getCheckValue(r.checks, 'optics_health') }}
+                  </span>
+                } @else {
+                  <span class="text-tertiary">—</span>
+                }
               </td>
             </ng-container>
             <ng-container matColumnDef="events">

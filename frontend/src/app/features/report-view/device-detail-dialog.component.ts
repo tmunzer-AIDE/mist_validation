@@ -44,10 +44,26 @@ export interface LldpNeighbor {
   neighbor_port_desc: string;
 }
 
+export interface PortOptics {
+  port_id: string;
+  media_type: string;
+  xcvr_model: string;
+  xcvr_serial: string;
+  xcvr_part_number: string;
+  rx_power: number | null;
+  tx_power: number | null;
+  rx_power_status: string;
+  tx_power_status: string;
+  temperature: number | null;
+  bias_current: number | null;
+  voltage: number | null;
+}
+
 export interface SwitchResult extends DeviceResult {
   virtual_chassis: VirtualChassis | null;
   cable_tests: CableTestResult[];
   lldp_neighbors: LldpNeighbor[];
+  port_optics: PortOptics[];
 }
 
 export interface ClusterMember {
@@ -85,6 +101,7 @@ export interface GatewayResult extends DeviceResult {
   wan_ports: WanPort[];
   lan_ports: LanPort[];
   networks: NetworkInfo[];
+  port_optics: PortOptics[];
 }
 
 export interface VcMember {
@@ -203,6 +220,7 @@ export class DeviceDetailDialogComponent {
   lanColumns = ['interface', 'network', 'up', 'lldp'];
   memberColumns = ['interface', 'up', 'lldp'];
   networkColumns = ['network', 'gateway_ip', 'dhcp_status', 'dhcp_detail'];
+  opticsColumns = ['port_id', 'xcvr_model', 'xcvr_serial', 'xcvr_part_number', 'rx_power', 'tx_power', 'temperature'];
   eventColumns = ['display', 'sub_id', 'status', 'trigger_count', 'last_change'];
 
   isSwitchResult = isSwitchResult;
@@ -239,6 +257,18 @@ export class DeviceDetailDialogComponent {
 
   get sortedNetworks(): NetworkInfo[] {
     return [...this.gatewayData.networks].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  get sortedPortOptics(): PortOptics[] {
+    const optics = (this.data.device as SwitchResult | GatewayResult).port_optics ?? [];
+    return [...optics].sort((a, b) => comparePortIds(a.port_id, b.port_id));
+  }
+
+  opticsStatusClass(status: string): string {
+    if (status === 'pass') return 'status-pass';
+    if (status === 'warn') return 'status-warn';
+    if (status === 'fail') return 'status-fail';
+    return 'status-info';
   }
 
   showAllEvents = signal(false);

@@ -4,6 +4,7 @@ import {
   OnInit,
   Output,
   computed,
+  effect,
   inject,
   input,
   signal,
@@ -46,6 +47,9 @@ interface ReportRow {
 
 interface SitesResponse {
   sites: Site[];
+  tdr_site_ids: string[];
+  tdr_group_name: string;
+  tdr_group_exists: boolean;
 }
 
 interface ReportsResponse {
@@ -81,9 +85,9 @@ interface StartReportResponse {
 })
 export class SiteSelectorComponent implements OnInit {
   authInfo = input.required<AuthInfo>();
-  selectedOrg = input<{ id: string; name: string } | null>(null);
+  selectedOrg = input<{ id: string; name: string; role?: string } | null>(null);
 
-  @Output() orgSelected = new EventEmitter<{ id: string; name: string }>();
+  @Output() orgSelected = new EventEmitter<{ id: string; name: string; role?: string }>();
   @Output() reportStarted = new EventEmitter<string>();
 
   private api = inject(ApiService);
@@ -94,13 +98,17 @@ export class SiteSelectorComponent implements OnInit {
   siteSearchCtrl = this.fb.control({ value: '', disabled: true });
   cableTestsCtrl = this.fb.control(false);
 
-  currentOrg = signal<{ id: string; name: string } | null>(null);
+  currentOrg = signal<{ id: string; name: string; role?: string } | null>(null);
   allSites = signal<Site[]>([]);
   sitesLoading = signal(false);
   selectedSite = signal<Site | null>(null);
 
   recentReports = signal<ReportRow[]>([]);
   reportsLoading = signal(false);
+
+  tdrSiteIds = signal<string[]>([]);
+  tdrGroupName = signal('');
+  tdrGroupExists = signal(true);
 
   generating = signal(false);
   startError = signal('');
@@ -133,7 +141,50 @@ export class SiteSelectorComponent implements OnInit {
     () => !!this.selectedSite() && (!!(this.currentOrg() || this.authInfo().orgs.length === 1)),
   );
 
+  canWriteOrg = computed(() => {
+    const org =
+      this.currentOrg() ?? (this.authInfo().orgs.length === 1 ? this.authInfo().orgs[0] : null);
+    const role = org?.role ?? 'read';
+    return role === 'admin' || role === 'write';
+  });
+
+  siteInTdrGroup = computed(() => {
+    const site = this.selectedSite();
+    if (!site) return false;
+    return this.tdrSiteIds().includes(site.id);
+  });
+
+  cableTestsAllowed = computed(() => {
+    if (!this.canWriteOrg()) return false;
+    if (!this.tdrGroupName()) return true;
+    return this.siteInTdrGroup();
+  });
+
+  cableTestsDisabledReason = computed(() => {
+    if (!this.canWriteOrg()) {
+      return 'Cable tests require write access. Your role for this organization is read-only.';
+    }
+    if (!this.tdrGroupExists()) {
+      const name = this.tdrGroupName();
+      return `Cable tests are not available. The site group '${name}' does not exist in this organization.`;
+    }
+    if (!this.siteInTdrGroup()) {
+      const name = this.tdrGroupName();
+      return `Cable tests are not enabled for this site. Add it to the '${name}' site group in Mist to enable.`;
+    }
+    return '';
+  });
+
   constructor() {
+    effect(() => {
+      if (!this.cableTestsAllowed()) {
+        this.cableTestsCtrl.setValue(false);
+        this.cableTestsCtrl.disable();
+      } else {
+        this.cableTestsCtrl.enable();
+      }
+    });
+
     this.siteSearchCtrl.valueChanges
       .pipe(debounceTime(0), distinctUntilChanged(), takeUntilDestroyed())
       .subscribe((val) => {
@@ -155,11 +206,13 @@ export class SiteSelectorComponent implements OnInit {
     this.loadRecentReports();
   }
 
-  loadSites(org?: { id: string; name: string }): void {
+  loadSites(org?: { id: string; name: string; role?: string }): void {
     this.sitesLoading.set(true);
     this.allSites.set([]);
     this.selectedSite.set(null);
     this.siteSearchCtrl.setValue('');
+    this.tdrSiteIds.set([]);
+    this.tdrGroupExists.set(true);
 
     const auth = this.authInfo();
     const resolvedOrg = org ?? this.selectedOrg() ?? (auth.orgs.length === 1 ? auth.orgs[0] : null);
@@ -167,6 +220,9 @@ export class SiteSelectorComponent implements OnInit {
     this.api.get<SitesResponse>(`sites?org_id=${orgId}`).subscribe({
       next: (res) => {
         this.allSites.set(res.sites);
+        this.tdrSiteIds.set(res.tdr_site_ids);
+        this.tdrGroupName.set(res.tdr_group_name);
+        this.tdrGroupExists.set(res.tdr_group_exists);
         this.sitesLoading.set(false);
         this.siteSearchCtrl.enable();
       },
@@ -197,7 +253,7 @@ export class SiteSelectorComponent implements OnInit {
     this.loadSites(org);
   }
 
-  displayOrg(org: { id: string; name: string } | null): string {
+  displayOrg(org: { id: string; name: string; role?: string } | null): string {
     return org?.name ?? '';
   }
 

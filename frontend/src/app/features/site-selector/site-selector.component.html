@@ -60,10 +60,26 @@
       </mat-form-field>
 
       <!-- Cable tests -->
-      <mat-checkbox [formControl]="cableTestsCtrl">Include cable tests</mat-checkbox>
-      @if (cableTestsCtrl.value) {
+      <mat-checkbox
+        [formControl]="cableTestsCtrl"
+        [matTooltip]="cableTestsDisabledReason()"
+      >
+        Include cable tests
+      </mat-checkbox>
+      @if (selectedSite() && !canWriteOrg()) {
+        <div class="cable-info">
+          <mat-icon style="font-size:14px;width:24px;height:14px;">info</mat-icon>
+          {{ cableTestsDisabledReason() }}
+        </div>
+      } @else if (selectedSite() && !cableTestsAllowed()) {
+        <div class="cable-info">
+          <mat-icon style="font-size:14px;width:24px;height:14px;">info</mat-icon>
+          {{ cableTestsDisabledReason() }}
+        </div>
+      }
+      @if (selectedSite() && cableTestsCtrl.value) {
         <div class="cable-warn">
-          <mat-icon style="font-size:14px;width:14px;height:14px;">warning</mat-icon>
+          <mat-icon style="font-size:14px;width:24px;height:14px;">warning</mat-icon>
           Cable tests can take several minutes on large deployments.
         </div>
       }

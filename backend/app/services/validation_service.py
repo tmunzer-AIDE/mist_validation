@@ -236,9 +236,9 @@ async def run_post_deployment_validation(
 
         # ── Execution phase (determinate progress bar) ───────────────
 
-        # Parallel fetch: switch UP ports + switch device stats
-        up_ports_by_mac, sw_stats_resp = await asyncio.gather(
-            _fetch_switch_up_ports(session, site_id),
+        # Parallel fetch: switch ports (single call for UP copper + optics) + switch device stats
+        (up_ports_by_mac, sw_optics_by_mac), sw_stats_resp = await asyncio.gather(
+            _fetch_switch_ports(session, site_id),
             mistapi.arun(stats.listSiteDevicesStats, session, site_id, type="switch", limit=1000),
         )
         switch_stats = sw_stats_resp.data if sw_stats_resp.status_code == 200 else []
@@ -278,6 +278,10 @@ async def run_post_deployment_validation(
                         "neighbor_port_desc": port_desc,
                     })
             sw_result["lldp_neighbors"] = lldp_neighbors
+            # Attach optics data and aggregated check
+            optics = sw_optics_by_mac.get(sw_mac, [])
+            sw_result["port_optics"] = optics
+            sw_result["checks"].append(_build_optics_check(optics))
         await tracker.complete_step("switches", f"{len(result['switches'])} switches validated")
 
         # Step 7: Gateway validation
@@ -841,6 +845,71 @@ async def _validate_aps(session, site_id: str, config_events: dict[str, dict]) -
     return results
 
 
+# ── Optics helpers ───────────────────────────────────────────────────────
+
+_RX_POWER_WARN = -20.0  # dBm
+_RX_POWER_FAIL = -25.0
+_TX_POWER_WARN = -8.0
+_TX_POWER_FAIL = -12.0
+
+
+def _optics_power_status(value: float | None, warn_threshold: float, fail_threshold: float) -> str:
+    """Return pass/warn/fail/info for an optics power reading."""
+    if value is None:
+        return "info"
+    if value < fail_threshold:
+        return "fail"
+    if value < warn_threshold:
+        return "warn"
+    return "pass"
+
+
+def _extract_port_optics(port: dict) -> dict | None:
+    """Extract optics info from a port stats entry. Returns None if no transceiver."""
+    xcvr_model = port.get("xcvr_model")
+    if not xcvr_model:
+        return None
+    rx = port.get("optics_rx_power")
+    tx = port.get("optics_tx_power")
+    return {
+        "port_id": port.get("port_id", ""),
+        "media_type": port.get("media_type", ""),
+        "xcvr_model": xcvr_model,
+        "xcvr_serial": port.get("xcvr_serial", ""),
+        "xcvr_part_number": port.get("xcvr_part_number", ""),
+        "rx_power": rx,
+        "tx_power": tx,
+        "rx_power_status": _optics_power_status(rx, _RX_POWER_WARN, _RX_POWER_FAIL),
+        "tx_power_status": _optics_power_status(tx, _TX_POWER_WARN, _TX_POWER_FAIL),
+        "temperature": port.get("optics_module_temperature"),
+        "bias_current": port.get("optics_bias_current"),
+        "voltage": port.get("optics_module_voltage"),
+    }
+
+
+def _build_optics_check(optics: list[dict]) -> dict:
+    """Build aggregated optics_health check from per-port optics list."""
+    if not optics:
+        return {"check": "optics_health", "status": "info", "value": "No optics"}
+    fail_count = sum(1 for o in optics if o["rx_power_status"] == "fail" or o["tx_power_status"] == "fail")
+    warn_count = sum(
+        1 for o in optics
+        if (o["rx_power_status"] == "warn" or o["tx_power_status"] == "warn")
+        and o["rx_power_status"] != "fail" and o["tx_power_status"] != "fail"
+    )
+    label = f"{len(optics)} optics"
+    if fail_count:
+        label += f" ({fail_count} fail)"
+        overall = "fail"
+    elif warn_count:
+        label += f" ({warn_count} warn)"
+        overall = "warn"
+    else:
+        has_reading = any(o["rx_power_status"] == "pass" or o["tx_power_status"] == "pass" for o in optics)
+        overall = "pass" if has_reading else "info"
+    return {"check": "optics_health", "status": overall, "value": label}
+
+
 # ── Switch validation ────────────────────────────────────────────────────
 
 
@@ -853,47 +922,64 @@ def _is_copper_port(port_id: str) -> bool:
     return port_id.startswith(_COPPER_PORT_PREFIXES)
 
 
-async def _fetch_switch_up_ports(session, site_id: str) -> dict[str, list[dict]]:
-    """Fetch UP copper ports for all switches using the dedicated port search API.
+async def _fetch_switch_ports(
+    session, site_id: str,
+) -> tuple[dict[str, list[dict]], dict[str, list[dict]]]:
+    """Fetch all switch ports in a single API call.
 
-    Only includes physical copper interfaces (ge-*, mge-*, nge-*) suitable for cable tests.
-    Returns a dict mapping device MAC → list of port dicts with LLDP info.
+    Returns a tuple of:
+      - copper_up_ports_by_mac: MAC → list of UP copper port dicts (for cable tests / LLDP)
+      - optics_by_mac: MAC → list of optics entries (ports with a transceiver)
     """
-    ports_by_mac: dict[str, list[dict]] = {}
+    copper_up: dict[str, list[dict]] = {}
+    optics: dict[str, list[dict]] = {}
     try:
         resp = await mistapi.arun(
             stats.searchSiteSwOrGwPorts,
             session,
             site_id,
             device_type="switch",
-            up=True,
             limit=1000,
         )
         if resp.status_code != 200:
             logger.warning("switch_ports_fetch_failed status=%s", resp.status_code)
-            return ports_by_mac
+            return copper_up, optics
 
         results = resp.data.get("results", resp.data) if isinstance(resp.data, dict) else resp.data
         if not isinstance(results, list):
-            return ports_by_mac
+            return copper_up, optics
 
         for port in results:
             if not isinstance(port, dict):
                 continue
             device_mac = port.get("mac", "")
             port_id = port.get("port_id", "")
-            if device_mac and port_id and _is_copper_port(port_id):
-                ports_by_mac.setdefault(device_mac, []).append(
+            if not device_mac or not port_id:
+                continue
+
+            # Copper UP ports (for cable tests and LLDP neighbors)
+            if port.get("up") and _is_copper_port(port_id):
+                copper_up.setdefault(device_mac, []).append(
                     {
                         "port_id": port_id,
                         "neighbor_system_name": port.get("neighbor_system_name", ""),
                         "neighbor_port_desc": port.get("neighbor_port_desc", ""),
                     }
                 )
+
+            # Optics data (any port with a transceiver)
+            optic = _extract_port_optics(port)
+            if optic:
+                optics.setdefault(device_mac, []).append(optic)
+
+        # Sort per-device optics lists by port_id
+        for mac in optics:
+            optics[mac].sort(key=lambda o: o["port_id"])
+
     except Exception as e:
         logger.warning("switch_ports_fetch_error error=%s", str(e))
 
-    return ports_by_mac
+    return copper_up, optics
 
 
 def _validate_switch_health(switch_stats: list[dict], config_events: dict[str, dict]) -> list[dict]:
@@ -1505,6 +1591,17 @@ async def _validate_single_gateway(
     # Networks with IP and DHCP details (filtered to port-assigned networks)
     gw_networks: list[dict] = _build_network_details(ip_configs, dhcpd_config, networks_list, port_config)
 
+    # Optics data from port stats
+    port_optics: list[dict] = []
+    for port_id, pstat in port_stats_map.items():
+        if not isinstance(pstat, dict):
+            continue
+        optic = _extract_port_optics(pstat)
+        if optic:
+            port_optics.append(optic)
+    port_optics.sort(key=lambda o: o["port_id"])
+    checks.append(_build_optics_check(port_optics))
+
     # Cluster / HA detection
     cluster_result = None
     if gw_stat.get("is_ha"):
@@ -1520,6 +1617,7 @@ async def _validate_single_gateway(
         "wan_ports": wan_ports,
         "lan_ports": lan_ports,
         "networks": gw_networks,
+        "port_optics": port_optics,
     }
 
 

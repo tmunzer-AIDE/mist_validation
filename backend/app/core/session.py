@@ -36,6 +36,27 @@ class SessionData:
         if not self.expires_at:
             self.expires_at = self.created_at + SESSION_TTL
 
+    _ROLE_PRIORITY = {"admin": 3, "write": 2, "read": 1}
+
+    def get_org_role(self, org_id: str) -> str | None:
+        """Return the highest org-level role for the given org, or None."""
+        best_role: str | None = None
+        for priv in self.privileges:
+            if (isinstance(priv, dict)
+                    and priv.get("scope") == "org"
+                    and priv.get("org_id") == org_id):
+                role = priv.get("role")
+                if role and (
+                    best_role is None
+                    or self._ROLE_PRIORITY.get(role, 0) > self._ROLE_PRIORITY.get(best_role, 0)
+                ):
+                    best_role = role
+        return best_role
+
+    def can_write(self, org_id: str) -> bool:
+        """True if the user has admin or write role for this org."""
+        return self.get_org_role(org_id) in ("admin", "write")
+
 
 class SessionStore:
     def __init__(self):

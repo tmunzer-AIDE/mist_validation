@@ -135,3 +135,28 @@ table {
 .reth-section {
   margin-top: 4px;
 }
+
+.optics-legend {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-bottom: 8px;
+}
+
+.status-pass {
+  color: var(--status-pass);
+  font-weight: 600;
+}
+
+.status-warn {
+  color: var(--status-warn);
+  font-weight: 600;
+}
+
+.status-fail {
+  color: var(--status-fail);
+  font-weight: 600;
+}
+
+.status-info {
+  color: var(--text-secondary);
+}

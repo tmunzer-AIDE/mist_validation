@@ -19,7 +19,7 @@ interface LoginResponse {
   host: string;
   user_email: string;
   token_name: string;
-  orgs: { id: string; name: string }[];
+  orgs: { id: string; name: string; role: string }[];
   // 2FA fields (returned when 2FA is required)
   two_factor_required?: boolean;
   two_factor_passed?: boolean;

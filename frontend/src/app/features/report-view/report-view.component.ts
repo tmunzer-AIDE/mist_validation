@@ -199,8 +199,8 @@ export class ReportViewComponent implements OnInit, OnDestroy {
 
   // Table column definitions
   apColumns = ['status', 'name', 'model', 'connection', 'firmware', 'eth0_speed', 'power', 'config', 'lldp', 'events'];
-  switchColumns = ['status', 'name', 'model', 'type', 'connection', 'firmware', 'config', 'cable_tests', 'events'];
-  gatewayColumns = ['status', 'name', 'model', 'type', 'connection', 'firmware', 'config', 'wan', 'lan', 'events'];
+  switchColumns = ['status', 'name', 'model', 'type', 'connection', 'firmware', 'config', 'cable_tests', 'optics', 'events'];
+  gatewayColumns = ['status', 'name', 'model', 'type', 'connection', 'firmware', 'config', 'wan', 'lan', 'optics', 'events'];
 
   // Expose helpers to template
   getCheckValue = getCheckValue;
