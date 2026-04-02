@@ -38,7 +38,7 @@ import { MatInputModule } from '@angular/material/input';
       </mat-form-field>
     </div>
     <div mat-dialog-actions align="end">
-      <button mat-button (click)="dialogRef.close()">Cancel</button>
+      <button mat-button (click)="cancel()">Cancel</button>
       <button mat-flat-button color="primary" (click)="submit()" [disabled]="!code.trim()">
         Verify
       </button>
@@ -53,8 +53,12 @@ import { MatInputModule } from '@angular/material/input';
   ],
 })
 export class TwoFactorDialogComponent {
-  dialogRef = inject(MatDialogRef<TwoFactorDialogComponent>);
+  private dialogRef = inject(MatDialogRef<TwoFactorDialogComponent>);
   code = '';
+
+  cancel(): void {
+    this.dialogRef.close();
+  }
 
   submit(): void {
     if (this.code.trim()) {

@@ -25,7 +25,7 @@ npm run build      # Production build to dist/browser/
 
 ### Local development build (copies frontend into backend static dir)
 ```bash
-./angular-buid.sh  # Builds frontend with --deploy-url static/, copies to backend/app/static
+make angular  # Builds frontend with --deploy-url static/, copies to backend/app/static
 ```
 
 ### Docker
@@ -34,7 +34,7 @@ docker build -t mist-validation .
 docker run -p 8080:8080 -v /data:/data mist-validation
 ```
 
-The Dockerfile uses Python 3.12-slim to run the FastAPI backend. The frontend must be pre-built locally (via `./angular-buid.sh` or `npm run build`) before building the Docker image. SQLite database lives at `/data/reports.db` (mount as volume).
+The Dockerfile uses Python 3.12-slim to run the FastAPI backend. The frontend must be pre-built locally (via `make angular` or `npm run build`) before building the Docker image. SQLite database lives at `/data/reports.db` (mount as volume).
 
 ## Architecture
 

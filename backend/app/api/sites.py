@@ -1,17 +1,11 @@
-from fastapi import APIRouter, Cookie, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
-from app.core.session import SessionData, session_store
+from app.api.deps import get_session
+from app.core.session import SessionData
 from app.models import SiteOption, SitesResponse
 from app.services.mist_service import ConfigurationError, MistAPIError, MistService
 
 router = APIRouter()
-
-
-def get_session(session_id: str = Cookie(default="")) -> SessionData:
-    s = session_store.get(session_id)
-    if not s:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    return s
 
 
 @router.get("/sites", response_model=SitesResponse)

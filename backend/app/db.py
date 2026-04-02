@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS reports (
     id TEXT PRIMARY KEY,
     mist_user_id TEXT NOT NULL,
     org_id TEXT NOT NULL,
+    org_name TEXT DEFAULT '',
     site_id TEXT NOT NULL,
     site_name TEXT DEFAULT '',
     status TEXT DEFAULT 'pending',
@@ -33,7 +34,12 @@ async def init_db() -> None:
     """Create tables if they do not exist."""
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.executescript(_CREATE_TABLE_SQL)
-        await db.commit()
+        # Migration: add org_name column to existing databases
+        try:
+            await db.execute("ALTER TABLE reports ADD COLUMN org_name TEXT DEFAULT ''")
+            await db.commit()
+        except Exception:
+            pass  # Column already exists
 
 
 def _row_to_dict(row, description) -> dict:
@@ -66,6 +72,7 @@ async def create_job(
     mist_user_id: str,
     org_id: str,
     site_id: str,
+    org_name: str = "",
     include_cable_tests: bool = False,
 ) -> dict:
     """Insert a new report job and return it as a dict."""
@@ -73,16 +80,17 @@ async def create_job(
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute(
             """
-            INSERT INTO reports (id, mist_user_id, org_id, site_id, status, progress, include_cable_tests, created_at)
-            VALUES (?, ?, ?, ?, 'pending', '{}', ?, ?)
+            INSERT INTO reports (id, mist_user_id, org_id, org_name, site_id, status, progress, include_cable_tests, created_at)
+            VALUES (?, ?, ?, ?, ?, 'pending', '{}', ?, ?)
             """,
-            (job_id, mist_user_id, org_id, site_id, int(include_cable_tests), now),
+            (job_id, mist_user_id, org_id, org_name, site_id, int(include_cable_tests), now),
         )
         await db.commit()
     return {
         "id": job_id,
         "mist_user_id": mist_user_id,
         "org_id": org_id,
+        "org_name": org_name,
         "site_id": site_id,
         "site_name": "",
         "status": "pending",
@@ -110,7 +118,7 @@ async def update_job(job_id: str, **kwargs) -> None:
     if not kwargs:
         return
 
-    _ALLOWED_COLUMNS = {"site_name", "status", "progress", "result", "error", "completed_at"}
+    _ALLOWED_COLUMNS = {"org_name", "site_name", "status", "progress", "result", "error", "completed_at"}
     bad = set(kwargs) - _ALLOWED_COLUMNS
     if bad:
         raise ValueError(f"update_job: unknown columns {bad}")
@@ -146,6 +154,14 @@ async def delete_job(job_id: str) -> None:
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute("DELETE FROM reports WHERE id = ?", (job_id,))
         await db.commit()
+
+
+async def get_report_count() -> int:
+    """Return total number of reports in the database."""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute("SELECT COUNT(*) FROM reports") as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else 0
 
 
 async def cleanup_old_jobs() -> None:

@@ -69,3 +69,69 @@ table {
 .members-table {
   font-size: 13px;
 }
+
+.cluster-details {
+  margin-top: 12px;
+}
+
+.cluster-details .info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 24px;
+  margin-bottom: 12px;
+}
+
+.cluster-details .info-cell label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.cluster-details .info-cell .value {
+  font-size: 13px;
+  color: var(--text-primary);
+  margin-top: 2px;
+}
+
+.pairs-cell {
+  padding-top: 4px !important;
+  padding-bottom: 4px !important;
+}
+
+.pair-chip {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-bottom: 2px;
+  white-space: nowrap;
+}
+
+.pair-normal {
+  background: rgba(46, 125, 50, 0.12);
+  color: #2e7d32;
+}
+
+.pair-fault {
+  background: rgba(198, 40, 40, 0.12);
+  color: #c62828;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.sub-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 8px 0 4px;
+}
+
+.reth-section {
+  margin-top: 4px;
+}

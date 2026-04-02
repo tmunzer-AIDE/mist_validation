@@ -19,6 +19,7 @@ class ReportCreateRequest(BaseModel):
 class ReportResponse(BaseModel):
     id: str
     org_id: str
+    org_name: str
     site_id: str
     site_name: str
     status: str

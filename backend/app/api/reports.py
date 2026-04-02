@@ -1,14 +1,14 @@
 import asyncio
-import json
 import re
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import Response
 
 from app import db
-from app.core.session import SessionData, session_store
+from app.api.deps import get_session
+from app.core.session import SessionData
 from app.core.websocket import ws_manager
 from app.models import ReportCreateRequest, ReportListResponse, ReportResponse
 from app.services import validation_service
@@ -17,37 +17,24 @@ from app.services.export_service import generate_csv_zip, generate_pdf
 router = APIRouter()
 
 
-def get_session(session_id: str = Cookie(default="")) -> SessionData:
-    """FastAPI dependency: resolve session from httpOnly cookie."""
-    s = session_store.get(session_id)
-    if not s:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    return s
+def _resolve_org_name(session: SessionData, org_id: str) -> str:
+    for priv in session.privileges:
+        if isinstance(priv, dict) and priv.get("scope") == "org" and priv.get("org_id") == org_id:
+            return priv.get("name", "") or priv.get("org_name", "") or org_id[:8]
+    return org_id[:8]
 
 
 def _job_to_response(job: dict) -> ReportResponse:
-    progress = job.get("progress", {})
-    if isinstance(progress, str):
-        try:
-            progress = json.loads(progress)
-        except Exception:
-            progress = {}
-
-    result = job.get("result")
-    if isinstance(result, str):
-        try:
-            result = json.loads(result)
-        except Exception:
-            result = None
-
+    # progress and result are already deserialized by db._deserialize_row
     return ReportResponse(
         id=job["id"],
         org_id=job["org_id"],
+        org_name=job.get("org_name", ""),
         site_id=job["site_id"],
         site_name=job.get("site_name", ""),
         status=job.get("status", "pending"),
-        progress=progress,
-        result=result,
+        progress=job.get("progress", {}),
+        result=job.get("result"),
         error=job.get("error"),
         include_cable_tests=bool(job.get("include_cable_tests", 0)),
         created_at=job.get("created_at", ""),
@@ -75,10 +62,12 @@ async def create_report(
         raise HTTPException(status_code=403, detail="Access denied to this organization")
 
     job_id = str(uuid.uuid4())
+    org_name = _resolve_org_name(session, request.org_id)
     job = await db.create_job(
         job_id=job_id,
         mist_user_id=session.user_identifier,
         org_id=request.org_id,
+        org_name=org_name,
         site_id=request.site_id,
         include_cable_tests=request.include_cable_tests,
     )

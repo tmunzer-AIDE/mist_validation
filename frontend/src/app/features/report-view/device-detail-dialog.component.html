@@ -10,251 +10,369 @@
 
 <div class="content-area">
   @if (data.type === 'switch') {
-    <!-- Virtual Chassis -->
-    <div class="section-title">Virtual Chassis Members</div>
-    @if (!switchData.virtual_chassis || switchData.virtual_chassis.length === 0) {
-      <div class="no-data">No virtual chassis data.</div>
-    } @else {
-      <table mat-table [dataSource]="switchData.virtual_chassis">
-        <ng-container matColumnDef="member_id">
-          <th mat-header-cell *matHeaderCellDef>Member</th>
-          <td mat-cell *matCellDef="let r">{{ r.member_id }}</td>
-        </ng-container>
-        <ng-container matColumnDef="model">
-          <th mat-header-cell *matHeaderCellDef>Model</th>
-          <td mat-cell *matCellDef="let r">{{ r.model }}</td>
-        </ng-container>
-        <ng-container matColumnDef="firmware">
-          <th mat-header-cell *matHeaderCellDef>Firmware</th>
-          <td mat-cell *matCellDef="let r">{{ r.firmware }}</td>
-        </ng-container>
-        <ng-container matColumnDef="vc_ports_up">
-          <th mat-header-cell *matHeaderCellDef>VC Ports UP</th>
-          <td mat-cell *matCellDef="let r">{{ r.vc_ports_up }}</td>
-        </ng-container>
-        <ng-container matColumnDef="status">
-          <th mat-header-cell *matHeaderCellDef>Status</th>
-          <td mat-cell *matCellDef="let r">
-            <app-status-badge [status]="r.status" />
-          </td>
-        </ng-container>
-        <tr mat-header-row *matHeaderRowDef="vcColumns"></tr>
-        <tr mat-row *matRowDef="let row; columns: vcColumns;"></tr>
-      </table>
-    }
+  <!-- Virtual Chassis -->
+  @if (switchData.virtual_chassis?.members?.length) {
+  <div class="section-title">Virtual Chassis Members</div>
+  <table mat-table [dataSource]="sortedVcMembers">
+    <ng-container matColumnDef="member_id">
+      <th mat-header-cell *matHeaderCellDef>Member</th>
+      <td mat-cell *matCellDef="let r">{{ r.member_id }}</td>
+    </ng-container>
+    <ng-container matColumnDef="model">
+      <th mat-header-cell *matHeaderCellDef>Model</th>
+      <td mat-cell *matCellDef="let r">{{ r.model }}</td>
+    </ng-container>
+    <ng-container matColumnDef="firmware">
+      <th mat-header-cell *matHeaderCellDef>Firmware</th>
+      <td mat-cell *matCellDef="let r">{{ r.firmware }}</td>
+    </ng-container>
+    <ng-container matColumnDef="vc_ports_up">
+      <th mat-header-cell *matHeaderCellDef>VC Ports UP</th>
+      <td mat-cell *matCellDef="let r">{{ r.vc_ports_up }}</td>
+    </ng-container>
+    <ng-container matColumnDef="status">
+      <th mat-header-cell *matHeaderCellDef>Status</th>
+      <td mat-cell *matCellDef="let r">
+        <app-status-badge [status]="r.status" />
+      </td>
+    </ng-container>
+    <tr mat-header-row *matHeaderRowDef="vcColumns"></tr>
+    <tr mat-row *matRowDef="let row; columns: vcColumns;"></tr>
+  </table>
+  }
 
-    <mat-divider></mat-divider>
+  <mat-divider></mat-divider>
 
-    <!-- Cable tests -->
-    <div class="section-title">Cable Test Results</div>
-    @if (switchData.cable_tests.length === 0) {
-      <div class="no-data">No cable test results available.</div>
-    } @else {
-      <table mat-table [dataSource]="switchData.cable_tests">
-        <ng-container matColumnDef="port">
-          <th mat-header-cell *matHeaderCellDef>Port</th>
-          <td mat-cell *matCellDef="let r">{{ r.port }}</td>
-        </ng-container>
-        <ng-container matColumnDef="lldp_neighbor">
-          <th mat-header-cell *matHeaderCellDef>LLDP Neighbor</th>
-          <td mat-cell *matCellDef="let r">{{ r.lldp_neighbor || '—' }}</td>
-        </ng-container>
-        <ng-container matColumnDef="status">
-          <th mat-header-cell *matHeaderCellDef>Status</th>
-          <td mat-cell *matCellDef="let r">
-            <app-status-badge [status]="r.status" />
-          </td>
-        </ng-container>
-        <ng-container matColumnDef="pairs">
-          <th mat-header-cell *matHeaderCellDef>Pairs</th>
-          <td mat-cell *matCellDef="let r">{{ r.pairs || '—' }}</td>
-        </ng-container>
-        <tr mat-header-row *matHeaderRowDef="cableColumns"></tr>
-        <tr mat-row *matRowDef="let row; columns: cableColumns;"></tr>
-      </table>
-    }
+  <!-- Cable tests -->
+  <div class="section-title">Cable Test Results</div>
+  @if (switchData.cable_tests.length === 0) {
+  <div class="no-data">No cable test results available.</div>
+  } @else {
+  <table mat-table [dataSource]="sortedCableTests">
+    <ng-container matColumnDef="port">
+      <th mat-header-cell *matHeaderCellDef>Port</th>
+      <td mat-cell *matCellDef="let r" class="mono">{{ r.port }}</td>
+    </ng-container>
+    <ng-container matColumnDef="lldp_neighbor">
+      <th mat-header-cell *matHeaderCellDef>LLDP Neighbor</th>
+      <td mat-cell *matCellDef="let r">{{ formatLldp(r) }}</td>
+    </ng-container>
+    <ng-container matColumnDef="status">
+      <th mat-header-cell *matHeaderCellDef>Result</th>
+      <td mat-cell *matCellDef="let r">
+        <app-status-badge [status]="r.status" />
+      </td>
+    </ng-container>
+    <ng-container matColumnDef="pairs">
+      <th mat-header-cell *matHeaderCellDef>Pairs</th>
+      <td mat-cell *matCellDef="let r" class="pairs-cell">
+        @if (r.pairs?.length) {
+        @for (p of r.pairs; track p.pair) {
+        <div class="pair-chip" [class]="pairClass(p.status)">
+          {{ p.pair }}: {{ p.status }} ({{ p.length }})
+        </div>
+        }
+        } @else {
+        —
+        }
+      </td>
+    </ng-container>
+    <tr mat-header-row *matHeaderRowDef="cableColumns"></tr>
+    <tr mat-row *matRowDef="let row; columns: cableColumns;"></tr>
+  </table>
+  }
+
+  <!-- LLDP Neighbors (shown when no cable tests, or always if neighbors exist) -->
+  @if (switchData.cable_tests.length === 0 && switchData.lldp_neighbors.length) {
+  <mat-divider></mat-divider>
+  <div class="section-title">LLDP Neighbors</div>
+  <table mat-table [dataSource]="sortedLldpNeighbors">
+    <ng-container matColumnDef="port_id">
+      <th mat-header-cell *matHeaderCellDef>Port</th>
+      <td mat-cell *matCellDef="let r" class="mono">{{ r.port_id }}</td>
+    </ng-container>
+    <ng-container matColumnDef="neighbor">
+      <th mat-header-cell *matHeaderCellDef>Neighbor</th>
+      <td mat-cell *matCellDef="let r">
+        {{ r.neighbor_system_name }}{{ r.neighbor_port_desc ? ' (' + r.neighbor_port_desc + ')' : '' }}
+      </td>
+    </ng-container>
+    <tr mat-header-row *matHeaderRowDef="lldpColumns"></tr>
+    <tr mat-row *matRowDef="let row; columns: lldpColumns;"></tr>
+  </table>
+  }
   }
 
   @if (data.type === 'gateway') {
-    <!-- WAN ports -->
-    <div class="section-title">WAN Ports</div>
-    @if (gatewayData.wan_ports.length === 0) {
-      <div class="no-data">No WAN ports data.</div>
-    } @else {
-      <table mat-table [dataSource]="gatewayData.wan_ports">
-        <ng-container matColumnDef="interface">
-          <th mat-header-cell *matHeaderCellDef>Interface</th>
-          <td mat-cell *matCellDef="let r">{{ r.interface }}</td>
-        </ng-container>
+  <!-- Cluster -->
+  @if (gatewayData.cluster?.members?.length) {
+  <div class="section-title">Cluster Nodes</div>
+  <table mat-table [dataSource]="sortedClusterMembers">
+    <ng-container matColumnDef="node_name">
+      <th mat-header-cell *matHeaderCellDef>Node</th>
+      <td mat-cell *matCellDef="let r">{{ r.node_name }}</td>
+    </ng-container>
+    <ng-container matColumnDef="model">
+      <th mat-header-cell *matHeaderCellDef>Model</th>
+      <td mat-cell *matCellDef="let r">{{ r.model }}</td>
+    </ng-container>
+    <ng-container matColumnDef="firmware">
+      <th mat-header-cell *matHeaderCellDef>Firmware</th>
+      <td mat-cell *matCellDef="let r">{{ r.firmware }}</td>
+    </ng-container>
+    <ng-container matColumnDef="status">
+      <th mat-header-cell *matHeaderCellDef>Status</th>
+      <td mat-cell *matCellDef="let r">
+        <app-status-badge [status]="r.status === 'connected' ? 'pass' : 'fail'" [label]="r.status" />
+      </td>
+    </ng-container>
+    <ng-container matColumnDef="ha_state">
+      <th mat-header-cell *matHeaderCellDef>HA State</th>
+      <td mat-cell *matCellDef="let r">{{ r.ha_state || '—' }}</td>
+    </ng-container>
+    <tr mat-header-row *matHeaderRowDef="clusterColumns"></tr>
+    <tr mat-row *matRowDef="let row; columns: clusterColumns;"></tr>
+  </table>
+
+  @if (gatewayData.cluster!.config; as cfg) {
+  <div class="cluster-details">
+    <div class="info-grid">
+      <div class="info-cell">
+        <label>Configuration</label>
+        <div class="value">{{ cfg.configuration || '—' }}</div>
+      </div>
+      <div class="info-cell">
+        <label>Operational</label>
+        <div class="value">{{ cfg.operational || '—' }}</div>
+      </div>
+      <div class="info-cell">
+        <label>Primary Health</label>
+        <div class="value">{{ cfg.primary_node_health || '—' }}</div>
+      </div>
+      <div class="info-cell">
+        <label>Secondary Health</label>
+        <div class="value">{{ cfg.secondary_node_health || '—' }}</div>
+      </div>
+      <div class="info-cell">
+        <label>Control Link</label>
+        <div class="value">{{ cfg.control_link.name || '—' }}: {{ cfg.control_link.status || '—' }}</div>
+      </div>
+      <div class="info-cell">
+        <label>Fabric Link</label>
+        <div class="value">{{ cfg.fabric_link.Status || '—' }}</div>
+      </div>
+    </div>
+    @if (cfg.reth_interfaces.length) {
+    <div class="reth-section">
+      <div class="sub-title">Reth Interfaces</div>
+      <table mat-table [dataSource]="sortedRethInterfaces">
         <ng-container matColumnDef="name">
-          <th mat-header-cell *matHeaderCellDef>Name</th>
-          <td mat-cell *matCellDef="let r">{{ r.name }}</td>
-        </ng-container>
-        <ng-container matColumnDef="up">
-          <th mat-header-cell *matHeaderCellDef>Status</th>
-          <td mat-cell *matCellDef="let r">
-            <app-status-badge [status]="r.up ? 'pass' : 'fail'" [label]="r.up ? 'UP' : 'DOWN'" />
-          </td>
-        </ng-container>
-        <ng-container matColumnDef="wan_type">
-          <th mat-header-cell *matHeaderCellDef>WAN Type</th>
-          <td mat-cell *matCellDef="let r">{{ r.wan_type || '—' }}</td>
-        </ng-container>
-        <ng-container matColumnDef="lldp">
-          <th mat-header-cell *matHeaderCellDef>LLDP</th>
-          <td mat-cell *matCellDef="let r">{{ r.lldp || '—' }}</td>
-        </ng-container>
-        <tr mat-header-row *matHeaderRowDef="wanColumns"></tr>
-        <tr mat-row *matRowDef="let row; columns: wanColumns;"></tr>
-      </table>
-    }
-
-    <mat-divider></mat-divider>
-
-    <!-- LAN ports -->
-    <div class="section-title">LAN Ports</div>
-    @if (gatewayData.lan_ports.length === 0) {
-      <div class="no-data">No LAN ports data.</div>
-    } @else {
-      <table mat-table [dataSource]="gatewayData.lan_ports">
-        <ng-container matColumnDef="interface">
           <th mat-header-cell *matHeaderCellDef>Interface</th>
-          <td mat-cell *matCellDef="let r">{{ r.interface }}</td>
-        </ng-container>
-        <ng-container matColumnDef="network">
-          <th mat-header-cell *matHeaderCellDef>Network</th>
-          <td mat-cell *matCellDef="let r">{{ r.network || '—' }}</td>
-        </ng-container>
-        <ng-container matColumnDef="up">
-          <th mat-header-cell *matHeaderCellDef>Status</th>
-          <td mat-cell *matCellDef="let r">
-            <app-status-badge [status]="r.up ? 'pass' : 'fail'" [label]="r.up ? 'UP' : 'DOWN'" />
-          </td>
-        </ng-container>
-        <ng-container matColumnDef="lldp">
-          <th mat-header-cell *matHeaderCellDef>LLDP</th>
-          <td mat-cell *matCellDef="let r">{{ r.lldp || '—' }}</td>
-        </ng-container>
-        <tr mat-header-row *matHeaderRowDef="lanColumns"></tr>
-        <tr mat-row *matRowDef="let row; columns: lanColumns;"></tr>
-      </table>
-      @for (port of gatewayData.lan_ports; track port.interface) {
-        @if (port.members && port.members.length > 0) {
-          <div class="members-section">
-            <div class="members-label">{{ port.interface }} members</div>
-            <table mat-table [dataSource]="port.members" class="members-table">
-              <ng-container matColumnDef="interface">
-                <th mat-header-cell *matHeaderCellDef>Interface</th>
-                <td mat-cell *matCellDef="let m">{{ m.interface }}</td>
-              </ng-container>
-              <ng-container matColumnDef="up">
-                <th mat-header-cell *matHeaderCellDef>Status</th>
-                <td mat-cell *matCellDef="let m">
-                  <app-status-badge [status]="m.up ? 'pass' : 'fail'" [label]="m.up ? 'UP' : 'DOWN'" />
-                </td>
-              </ng-container>
-              <ng-container matColumnDef="lldp">
-                <th mat-header-cell *matHeaderCellDef>LLDP</th>
-                <td mat-cell *matCellDef="let m">
-                  @if (m.neighbor_system_name) {
-                    {{ m.neighbor_system_name }}{{ m.neighbor_port_desc ? ' / ' + m.neighbor_port_desc : '' }}
-                  } @else {
-                    —
-                  }
-                </td>
-              </ng-container>
-              <tr mat-header-row *matHeaderRowDef="memberColumns"></tr>
-              <tr mat-row *matRowDef="let row; columns: memberColumns;"></tr>
-            </table>
-          </div>
-        }
-      }
-    }
-
-    <mat-divider></mat-divider>
-
-    <!-- Networks -->
-    <div class="section-title">Networks</div>
-    @if (gatewayData.networks.length === 0) {
-      <div class="no-data">No network data.</div>
-    } @else {
-      <table mat-table [dataSource]="gatewayData.networks">
-        <ng-container matColumnDef="network">
-          <th mat-header-cell *matHeaderCellDef>Network</th>
           <td mat-cell *matCellDef="let r">{{ r.name }}</td>
         </ng-container>
-        <ng-container matColumnDef="gateway_ip">
-          <th mat-header-cell *matHeaderCellDef>Gateway IP</th>
-          <td mat-cell *matCellDef="let r">{{ r.gateway_ip || '—' }}</td>
-        </ng-container>
-        <ng-container matColumnDef="dhcp_status">
-          <th mat-header-cell *matHeaderCellDef>DHCP</th>
-          <td mat-cell *matCellDef="let r">{{ r.dhcp_status || '—' }}</td>
-        </ng-container>
-        <ng-container matColumnDef="dhcp_detail">
-          <th mat-header-cell *matHeaderCellDef>DHCP Pool / Relay</th>
+        <ng-container matColumnDef="status">
+          <th mat-header-cell *matHeaderCellDef>Status</th>
           <td mat-cell *matCellDef="let r">
-            @if (r.dhcp_pool) {
-              {{ r.dhcp_pool }}
-            } @else if (r.dhcp_relay_servers?.length) {
-              {{ r.dhcp_relay_servers.join(', ') }}
-            } @else {
-              —
-            }
+            <app-status-badge [status]="r.status === 'Up' ? 'pass' : 'fail'" [label]="r.status" />
           </td>
         </ng-container>
-        <tr mat-header-row *matHeaderRowDef="networkColumns"></tr>
-        <tr mat-row *matRowDef="let row; columns: networkColumns;"></tr>
+        <tr mat-header-row *matHeaderRowDef="rethColumns"></tr>
+        <tr mat-row *matRowDef="let row; columns: rethColumns;"></tr>
       </table>
+    </div>
     }
+  </div>
+  }
+
+  <mat-divider></mat-divider>
+  }
+
+  <!-- WAN ports -->
+  <div class="section-title">WAN Ports</div>
+  @if (gatewayData.wan_ports.length === 0) {
+  <div class="no-data">No WAN ports data.</div>
+  } @else {
+  <table mat-table [dataSource]="sortedWanPorts">
+    <ng-container matColumnDef="interface">
+      <th mat-header-cell *matHeaderCellDef>Interface</th>
+      <td mat-cell *matCellDef="let r">{{ r.interface }}</td>
+    </ng-container>
+    <ng-container matColumnDef="name">
+      <th mat-header-cell *matHeaderCellDef>Name</th>
+      <td mat-cell *matCellDef="let r">{{ r.name }}</td>
+    </ng-container>
+    <ng-container matColumnDef="up">
+      <th mat-header-cell *matHeaderCellDef>Status</th>
+      <td mat-cell *matCellDef="let r">
+        <app-status-badge [status]="r.up ? 'pass' : 'fail'" [label]="r.up ? 'UP' : 'DOWN'" />
+      </td>
+    </ng-container>
+    <ng-container matColumnDef="wan_type">
+      <th mat-header-cell *matHeaderCellDef>WAN Type</th>
+      <td mat-cell *matCellDef="let r">{{ r.wan_type || '—' }}</td>
+    </ng-container>
+    <ng-container matColumnDef="lldp">
+      <th mat-header-cell *matHeaderCellDef>LLDP</th>
+      <td mat-cell *matCellDef="let r">
+        @if (r.neighbor_system_name) {
+        {{ r.neighbor_system_name }}{{ r.neighbor_port_desc ? ' / ' + r.neighbor_port_desc : '' }}
+        } @else {
+        —
+        }
+    </ng-container>
+    <tr mat-header-row *matHeaderRowDef="wanColumns"></tr>
+    <tr mat-row *matRowDef="let row; columns: wanColumns;"></tr>
+  </table>
+  }
+
+  <mat-divider></mat-divider>
+
+  <!-- LAN ports -->
+  <div class="section-title">LAN Ports</div>
+  @if (gatewayData.lan_ports.length === 0) {
+  <div class="no-data">No LAN ports data.</div>
+  } @else {
+  <table mat-table [dataSource]="sortedLanPorts">
+    <ng-container matColumnDef="interface">
+      <th mat-header-cell *matHeaderCellDef>Interface</th>
+      <td mat-cell *matCellDef="let r">{{ r.interface }}</td>
+    </ng-container>
+    <ng-container matColumnDef="network">
+      <th mat-header-cell *matHeaderCellDef>Network</th>
+      <td mat-cell *matCellDef="let r">{{ r.network || '—' }}</td>
+    </ng-container>
+    <ng-container matColumnDef="up">
+      <th mat-header-cell *matHeaderCellDef>Status</th>
+      <td mat-cell *matCellDef="let r">
+        <app-status-badge [status]="r.up ? 'pass' : 'fail'" [label]="r.up ? 'UP' : 'DOWN'" />
+      </td>
+    </ng-container>
+    <ng-container matColumnDef="lldp">
+      <th mat-header-cell *matHeaderCellDef>LLDP</th>
+      <td mat-cell *matCellDef="let r">
+        @if (r.neighbor_system_name) {
+        {{ r.neighbor_system_name }}{{ r.neighbor_port_desc ? ' / ' + r.neighbor_port_desc : '' }}
+        } @else {
+        —
+        }
+    </ng-container>
+    <tr mat-header-row *matHeaderRowDef="lanColumns"></tr>
+    <tr mat-row *matRowDef="let row; columns: lanColumns;"></tr>
+  </table>
+  @for (port of sortedLanPorts; track port.interface) {
+  @if (port.members && port.members.length > 0) {
+  <div class="members-section">
+    <div class="members-label">{{ port.interface }} members</div>
+    <table mat-table [dataSource]="port.members" class="members-table">
+      <ng-container matColumnDef="interface">
+        <th mat-header-cell *matHeaderCellDef>Interface</th>
+        <td mat-cell *matCellDef="let m">{{ m.interface }}</td>
+      </ng-container>
+      <ng-container matColumnDef="up">
+        <th mat-header-cell *matHeaderCellDef>Status</th>
+        <td mat-cell *matCellDef="let m">
+          <app-status-badge [status]="m.up ? 'pass' : 'fail'" [label]="m.up ? 'UP' : 'DOWN'" />
+        </td>
+      </ng-container>
+      <ng-container matColumnDef="lldp">
+        <th mat-header-cell *matHeaderCellDef>LLDP</th>
+        <td mat-cell *matCellDef="let m">
+          @if (m.neighbor_system_name) {
+          {{ m.neighbor_system_name }}{{ m.neighbor_port_desc ? ' / ' + m.neighbor_port_desc : '' }}
+          } @else {
+          —
+          }
+        </td>
+      </ng-container>
+      <tr mat-header-row *matHeaderRowDef="memberColumns"></tr>
+      <tr mat-row *matRowDef="let row; columns: memberColumns;"></tr>
+    </table>
+  </div>
+  }
+  }
+  }
+
+  <mat-divider></mat-divider>
+
+  <!-- Networks -->
+  <div class="section-title">Networks</div>
+  @if (gatewayData.networks.length === 0) {
+  <div class="no-data">No network data.</div>
+  } @else {
+  <table mat-table [dataSource]="sortedNetworks">
+    <ng-container matColumnDef="network">
+      <th mat-header-cell *matHeaderCellDef>Network</th>
+      <td mat-cell *matCellDef="let r">{{ r.name }}</td>
+    </ng-container>
+    <ng-container matColumnDef="gateway_ip">
+      <th mat-header-cell *matHeaderCellDef>Gateway IP</th>
+      <td mat-cell *matCellDef="let r">{{ r.gateway_ip || '—' }}</td>
+    </ng-container>
+    <ng-container matColumnDef="dhcp_status">
+      <th mat-header-cell *matHeaderCellDef>DHCP</th>
+      <td mat-cell *matCellDef="let r">{{ r.dhcp_status || '—' }}</td>
+    </ng-container>
+    <ng-container matColumnDef="dhcp_detail">
+      <th mat-header-cell *matHeaderCellDef>DHCP Pool / Relay</th>
+      <td mat-cell *matCellDef="let r">
+        @if (r.dhcp_pool) {
+        {{ r.dhcp_pool }}
+        } @else if (r.dhcp_relay_servers?.length) {
+        {{ r.dhcp_relay_servers.join(', ') }}
+        } @else {
+        —
+        }
+      </td>
+    </ng-container>
+    <tr mat-header-row *matHeaderRowDef="networkColumns"></tr>
+    <tr mat-row *matRowDef="let row; columns: networkColumns;"></tr>
+  </table>
+  }
   }
 
   <!-- Device Events (shown for all device types) -->
   @if (data.device.events && data.device.events.length > 0) {
-    @if (data.type !== 'ap') {
-      <mat-divider></mat-divider>
-    }
-    <div class="section-title events-header">
-      <span>Device Events (24h)</span>
-      <mat-slide-toggle
-        [checked]="showAllEvents()"
-        (change)="showAllEvents.set($event.checked)"
-      >
-        Show cleared
-      </mat-slide-toggle>
-    </div>
-    @if (filteredEvents().length === 0) {
-      <div class="no-data">No open events.</div>
-    } @else {
-      <table mat-table [dataSource]="filteredEvents()">
-        <ng-container matColumnDef="display">
-          <th mat-header-cell *matHeaderCellDef>Event</th>
-          <td mat-cell *matCellDef="let r">{{ r.display }}</td>
-        </ng-container>
-        <ng-container matColumnDef="sub_id">
-          <th mat-header-cell *matHeaderCellDef>Detail</th>
-          <td mat-cell *matCellDef="let r">{{ r.sub_id || '—' }}</td>
-        </ng-container>
-        <ng-container matColumnDef="status">
-          <th mat-header-cell *matHeaderCellDef>Status</th>
-          <td mat-cell *matCellDef="let r">
-            <app-status-badge [status]="r.status === 'triggered' ? 'warn' : 'pass'" [label]="r.status" />
-          </td>
-        </ng-container>
-        <ng-container matColumnDef="trigger_count">
-          <th mat-header-cell *matHeaderCellDef>Triggers</th>
-          <td mat-cell *matCellDef="let r">{{ r.trigger_count }}</td>
-        </ng-container>
-        <ng-container matColumnDef="last_change">
-          <th mat-header-cell *matHeaderCellDef>Last Change</th>
-          <td mat-cell *matCellDef="let r">{{ formatEventTime(r.last_change) }}</td>
-        </ng-container>
-        <tr mat-header-row *matHeaderRowDef="eventColumns"></tr>
-        <tr mat-row *matRowDef="let row; columns: eventColumns;"></tr>
-      </table>
-    }
+  @if (data.type !== 'ap') {
+  <mat-divider></mat-divider>
+  }
+  <div class="section-title events-header">
+    <span>Device Events (24h)</span>
+    <mat-slide-toggle [checked]="showAllEvents()" (change)="showAllEvents.set($event.checked)">
+      Show cleared
+    </mat-slide-toggle>
+  </div>
+  @if (filteredEvents().length === 0) {
+  <div class="no-data">No open events.</div>
+  } @else {
+  <table mat-table [dataSource]="filteredEvents()">
+    <ng-container matColumnDef="display">
+      <th mat-header-cell *matHeaderCellDef>Event</th>
+      <td mat-cell *matCellDef="let r">{{ r.display }}</td>
+    </ng-container>
+    <ng-container matColumnDef="sub_id">
+      <th mat-header-cell *matHeaderCellDef>Detail</th>
+      <td mat-cell *matCellDef="let r">{{ r.sub_id || '—' }}</td>
+    </ng-container>
+    <ng-container matColumnDef="status">
+      <th mat-header-cell *matHeaderCellDef>Status</th>
+      <td mat-cell *matCellDef="let r">
+        <app-status-badge [status]="r.status === 'triggered' ? 'warn' : 'pass'" [label]="r.status" />
+      </td>
+    </ng-container>
+    <ng-container matColumnDef="trigger_count">
+      <th mat-header-cell *matHeaderCellDef>Triggers</th>
+      <td mat-cell *matCellDef="let r">{{ r.trigger_count }}</td>
+    </ng-container>
+    <ng-container matColumnDef="last_change">
+      <th mat-header-cell *matHeaderCellDef>Last Change</th>
+      <td mat-cell *matCellDef="let r">{{ formatEventTime(r.last_change) }}</td>
+    </ng-container>
+    <tr mat-header-row *matHeaderRowDef="eventColumns"></tr>
+    <tr mat-row *matRowDef="let row; columns: eventColumns;"></tr>
+  </table>
+  }
   } @else if (data.type === 'ap') {
-    <div class="no-data">No events or additional details for this AP.</div>
+  <div class="no-data">No events or additional details for this AP.</div>
   }
 </div>
 

@@ -67,7 +67,9 @@ export class WsService {
 
   unsubscribe(channel: string): void {
     this.pendingChannels.delete(channel);
-    this.socket?.send(JSON.stringify({ type: 'unsubscribe', channel }));
+    if (this.socket?.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify({ type: 'unsubscribe', channel }));
+    }
   }
 
   channel$(channel: string): Observable<Record<string, unknown>> {

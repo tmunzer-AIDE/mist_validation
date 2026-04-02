@@ -34,6 +34,7 @@ def _set_session_cookie(response: JSONResponse, session_id: str) -> None:
         key=SESSION_COOKIE,
         value=session_id,
         httponly=True,
+        secure=True,
         samesite="lax",
         path="/",
         max_age=SESSION_MAX_AGE,
@@ -208,32 +209,6 @@ async def logout(session_id: str = Cookie(default="")):
     return response
 
 
-def _extract_user_data(user_data: dict) -> dict:
-    """Extract user info and orgs from /api/v1/self response."""
-    email = user_data.get("email", "")
-    token_name = user_data.get("name", "")
-
-    privileges = user_data.get("privileges", [])
-    org_ids: set[str] = set()
-    orgs_seen: dict[str, str] = {}
-    for priv in privileges:
-        if isinstance(priv, dict) and priv.get("scope") == "org":
-            org_id = priv.get("org_id", "")
-            org_name = priv.get("name", "") or priv.get("org_name", "") or org_id[:8]
-            if org_id:
-                org_ids.add(org_id)
-                if org_id not in orgs_seen:
-                    orgs_seen[org_id] = org_name
-
-    return {
-        "email": email,
-        "token_name": token_name,
-        "privileges": privileges,
-        "org_ids": org_ids,
-        "orgs": [{"id": k, "name": v} for k, v in orgs_seen.items()],
-    }
-
-
 def _orgs_from_privileges(privileges: list[dict]) -> list[dict]:
     """Build org list from raw privileges array."""
     orgs_seen: dict[str, str] = {}
@@ -244,3 +219,16 @@ def _orgs_from_privileges(privileges: list[dict]) -> list[dict]:
             if org_id and org_id not in orgs_seen:
                 orgs_seen[org_id] = org_name
     return [{"id": k, "name": v} for k, v in orgs_seen.items()]
+
+
+def _extract_user_data(user_data: dict) -> dict:
+    """Extract user info and orgs from /api/v1/self response."""
+    privileges = user_data.get("privileges", [])
+    orgs = _orgs_from_privileges(privileges)
+    return {
+        "email": user_data.get("email", ""),
+        "token_name": user_data.get("name", ""),
+        "privileges": privileges,
+        "org_ids": {o["id"] for o in orgs},
+        "orgs": orgs,
+    }

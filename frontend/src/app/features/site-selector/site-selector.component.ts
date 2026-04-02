@@ -12,6 +12,7 @@ import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { MatAutocompleteModule } from '@angular/material/autocomplete';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatCheckboxModule } from '@angular/material/checkbox';
@@ -27,6 +28,7 @@ import { debounceTime, distinctUntilChanged } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { AuthInfo } from '../../app.component';
 import { StatusBadgeComponent } from '../../shared/components/status-badge/status-badge.component';
+import { ConfirmDeleteDialogComponent } from './confirm-delete-dialog.component';
 
 interface Site {
   id: string;
@@ -35,6 +37,7 @@ interface Site {
 
 interface ReportRow {
   id: string;
+  org_name: string;
   site_name: string;
   status: string;
   created_at: string;
@@ -66,6 +69,7 @@ interface StartReportResponse {
     MatAutocompleteModule,
     MatButtonModule,
     MatCheckboxModule,
+    MatDialogModule,
     MatTableModule,
     MatIconModule,
     MatProgressSpinnerModule,
@@ -84,6 +88,7 @@ export class SiteSelectorComponent implements OnInit {
 
   private api = inject(ApiService);
   private fb = inject(FormBuilder);
+  private dialog = inject(MatDialog);
 
   orgSearchCtrl = this.fb.control('');
   siteSearchCtrl = this.fb.control({ value: '', disabled: true });
@@ -100,7 +105,7 @@ export class SiteSelectorComponent implements OnInit {
   generating = signal(false);
   startError = signal('');
 
-  reportColumns = ['site_name', 'status', 'created_at', 'action'];
+  reportColumns = ['org_name', 'site_name', 'status', 'created_at', 'action'];
 
   private orgQuery = toSignal(
     this.orgSearchCtrl.valueChanges.pipe(debounceTime(0), distinctUntilChanged()),
@@ -228,11 +233,19 @@ export class SiteSelectorComponent implements OnInit {
       });
   }
 
-  deleteReport(id: string): void {
-    this.api.delete(`reports/${id}`).subscribe({
-      next: () => {
-        this.recentReports.update((list) => list.filter((r) => r.id !== id));
-      },
+  deleteReport(row: ReportRow): void {
+    const label = [row.org_name, row.site_name].filter(Boolean).join(' / ') || row.id;
+    const ref = this.dialog.open(ConfirmDeleteDialogComponent, {
+      data: { label },
+      width: '360px',
+    });
+    ref.afterClosed().subscribe((confirmed) => {
+      if (!confirmed) return;
+      this.api.delete(`reports/${row.id}`).subscribe({
+        next: () => {
+          this.recentReports.update((list) => list.filter((r) => r.id !== row.id));
+        },
+      });
     });
   }
 

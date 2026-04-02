@@ -33,12 +33,55 @@ export interface DeviceResult {
   events?: DeviceEvent[];
 }
 
+export interface VirtualChassis {
+  status: string;
+  members: VcMember[];
+}
+
+export interface LldpNeighbor {
+  port_id: string;
+  neighbor_system_name: string;
+  neighbor_port_desc: string;
+}
+
 export interface SwitchResult extends DeviceResult {
-  virtual_chassis: VcMember[] | null;
+  virtual_chassis: VirtualChassis | null;
   cable_tests: CableTestResult[];
+  lldp_neighbors: LldpNeighbor[];
+}
+
+export interface ClusterMember {
+  node_name: string;
+  mac: string;
+  model: string;
+  firmware: string;
+  status: string;
+  ha_state: string;
+}
+
+export interface RethInterface {
+  name: string;
+  status: string;
+}
+
+export interface ClusterConfig {
+  configuration: string;
+  operational: string;
+  primary_node_health: string;
+  secondary_node_health: string;
+  control_link: { name?: string; status?: string };
+  fabric_link: { Status?: string; State?: string };
+  reth_interfaces: RethInterface[];
+}
+
+export interface GatewayCluster {
+  status: string;
+  members: ClusterMember[];
+  config?: ClusterConfig;
 }
 
 export interface GatewayResult extends DeviceResult {
+  cluster: GatewayCluster | null;
   wan_ports: WanPort[];
   lan_ports: LanPort[];
   networks: NetworkInfo[];
@@ -52,11 +95,18 @@ export interface VcMember {
   status: string;
 }
 
+export interface CablePair {
+  pair: string;
+  status: string;
+  length: string;
+}
+
 export interface CableTestResult {
   port: string;
-  lldp_neighbor: string;
   status: string;
-  pairs: string;
+  pairs: CablePair[];
+  neighbor_system_name?: string;
+  neighbor_port_desc?: string;
 }
 
 export interface PortMember {
@@ -100,6 +150,23 @@ function isSwitchResult(d: SwitchResult | GatewayResult): d is SwitchResult {
   return 'cable_tests' in d;
 }
 
+/** Natural sort for port IDs like ge-0/0/1, ge-0/0/11, ge-1/0/0 */
+function comparePortIds(a: string, b: string): number {
+  const partsA = a.split(/(\d+)/);
+  const partsB = b.split(/(\d+)/);
+  for (let i = 0; i < Math.min(partsA.length, partsB.length); i++) {
+    const pa = partsA[i], pb = partsB[i];
+    const na = Number(pa), nb = Number(pb);
+    if (!isNaN(na) && !isNaN(nb)) {
+      if (na !== nb) return na - nb;
+    } else {
+      const cmp = pa.localeCompare(pb);
+      if (cmp !== 0) return cmp;
+    }
+  }
+  return partsA.length - partsB.length;
+}
+
 @Component({
   selector: 'app-device-detail-dialog',
   standalone: true,
@@ -129,6 +196,9 @@ export class DeviceDetailDialogComponent {
 
   vcColumns = ['member_id', 'model', 'firmware', 'vc_ports_up', 'status'];
   cableColumns = ['port', 'lldp_neighbor', 'status', 'pairs'];
+  lldpColumns = ['port_id', 'neighbor'];
+  clusterColumns = ['node_name', 'model', 'firmware', 'status', 'ha_state'];
+  rethColumns = ['name', 'status'];
   wanColumns = ['interface', 'name', 'up', 'wan_type', 'lldp'];
   lanColumns = ['interface', 'network', 'up', 'lldp'];
   memberColumns = ['interface', 'up', 'lldp'];
@@ -137,13 +207,58 @@ export class DeviceDetailDialogComponent {
 
   isSwitchResult = isSwitchResult;
 
+  // Sorted data sources for switch tables
+  get sortedVcMembers(): VcMember[] {
+    return [...(this.switchData.virtual_chassis?.members ?? [])].sort((a, b) => a.member_id - b.member_id);
+  }
+
+  get sortedCableTests(): CableTestResult[] {
+    return [...this.switchData.cable_tests].sort((a, b) => comparePortIds(a.port, b.port));
+  }
+
+  get sortedLldpNeighbors(): LldpNeighbor[] {
+    return [...this.switchData.lldp_neighbors].sort((a, b) => comparePortIds(a.port_id, b.port_id));
+  }
+
+  // Sorted data sources for gateway tables
+  get sortedClusterMembers(): ClusterMember[] {
+    return [...(this.gatewayData.cluster?.members ?? [])].sort((a, b) => a.node_name.localeCompare(b.node_name));
+  }
+
+  get sortedRethInterfaces(): RethInterface[] {
+    return [...(this.gatewayData.cluster?.config?.reth_interfaces ?? [])].sort((a, b) => comparePortIds(a.name, b.name));
+  }
+
+  get sortedWanPorts(): WanPort[] {
+    return [...this.gatewayData.wan_ports].sort((a, b) => comparePortIds(a.interface, b.interface));
+  }
+
+  get sortedLanPorts(): LanPort[] {
+    return [...this.gatewayData.lan_ports].sort((a, b) => comparePortIds(a.interface, b.interface));
+  }
+
+  get sortedNetworks(): NetworkInfo[] {
+    return [...this.gatewayData.networks].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   showAllEvents = signal(false);
 
   filteredEvents = computed(() => {
     const events = this.data.device.events ?? [];
-    if (this.showAllEvents()) return events;
-    return events.filter((e) => e.status === 'triggered');
+    const filtered = this.showAllEvents() ? events : events.filter((e) => e.status === 'triggered');
+    return [...filtered].sort((a, b) => a.display.localeCompare(b.display));
   });
+
+  formatLldp(r: CableTestResult): string {
+    const parts = [r.neighbor_system_name, r.neighbor_port_desc ? `(${r.neighbor_port_desc})` : ''].filter(Boolean);
+    return parts.join(' ') || '—';
+  }
+
+  pairClass(status: string): string {
+    const s = status.toLowerCase();
+    if (s === 'normal') return 'pair-normal';
+    return 'pair-fault';
+  }
 
   formatEventTime(epoch: number): string {
     if (!epoch) return '';

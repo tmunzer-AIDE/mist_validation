@@ -372,6 +372,21 @@ def generate_pdf(report) -> bytes:
         for gw in gateways:
             elements.append(Paragraph(f"<b>{_esc(gw.get('name', '(unnamed)'))}</b> — {_esc(gw.get('model', ''))}", normal_style))
 
+            cluster = gw.get("cluster")
+            if cluster and cluster.get("members"):
+                cw_cl = [w * 0.15, w * 0.2, w * 0.25, w * 0.2, w * 0.2]
+                data = [[_ph("Node"), _ph("Model"), _ph("Firmware"), _ph("Status"), _ph("HA State")]]
+                for m in cluster["members"]:
+                    m_status = m.get("status", "")
+                    data.append([
+                        _p(m.get("node_name", "")),
+                        _p(m.get("model", "")),
+                        _p(m.get("firmware", "")),
+                        Paragraph(f"<b>{_esc(m_status)}</b>", _CELL_GREEN if m_status == "connected" else _CELL_RED),
+                        _p(m.get("ha_state", "")),
+                    ])
+                elements.append(_make_table(data, cw_cl))
+
             wan_ports = gw.get("wan_ports", [])
             if wan_ports:
                 cw_wp = [w * 0.15, w * 0.15, w * 0.1, w * 0.2, w * 0.4]

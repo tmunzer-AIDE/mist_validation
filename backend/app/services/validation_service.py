@@ -31,7 +31,6 @@ from mistapi.api.v1.orgs import (
 )
 from mistapi.api.v1.sites import (
     devices,
-    gatewaytemplates,
     networks,
     setting,
     stats,
@@ -75,8 +74,6 @@ class _ProgressTracker:
         }
         self.overall_completed = 0
         self.overall_total = 0  # 0 = discovery phase (indeterminate)
-        self._persist_counter = 0
-        self._persist_lock = asyncio.Lock()
 
     async def start_step(self, step_id: str, message: str = "") -> None:
         self.steps[step_id]["status"] = "running"
@@ -112,7 +109,6 @@ class _ProgressTracker:
         """Increment progress for one completed cable test port."""
         self.steps["cable_tests"]["message"] = message
         self.overall_completed += 1
-        self._persist_counter += 1
         await self._broadcast()
 
     async def _broadcast(self) -> None:
@@ -176,10 +172,9 @@ async def run_post_deployment_validation(
 
         # Step 2: Fetch assigned templates + WLANs + gateway template
         await tracker.start_step("templates", "Checking templates and WLANs...")
-        assigned_templates, assigned_template_data = await _fetch_assigned_templates(session, mist.org_id, site_data)
+        assigned_templates, assigned_template_data, gw_template_config = await _fetch_assigned_templates(session, mist.org_id, site_data)
         derived_sources = await _fetch_derived_sources(session, site_id)
         wlan_info = await _fetch_wlan_info(session, site_id)
-        gw_template_config = await _fetch_gw_template_config(session, site_id)
 
         # Determine which networks are actually assigned to gateway ports.
         # The derived template may drop range keys (e.g. "ge-0/0/2-3"), so
@@ -193,7 +188,8 @@ async def run_post_deployment_validation(
         _FILTERABLE_TEMPLATES = {"gateway_template", "network_template"}
 
         def _filter_derived(ttype: str, tlist: list) -> list:
-            if ttype == "network" and used_network_names:
+            if ttype == "network":
+                # Only scan networks actually assigned to gateway ports
                 return [t for t in tlist if t.get("name") in used_network_names]
             if ttype == "application":
                 # Only scan applications explicitly referenced in service policies
@@ -201,11 +197,10 @@ async def run_post_deployment_validation(
             return tlist
 
         derived_sources = [(ttype, _filter_derived(ttype, tlist)) for ttype, tlist in derived_sources]
-        if used_network_names:
-            assigned_template_data = [
-                (ttype, [_filter_template_networks(t, used_network_names) for t in tlist] if ttype in _FILTERABLE_TEMPLATES else tlist)
-                for ttype, tlist in assigned_template_data
-            ]
+        assigned_template_data = [
+            (ttype, [_filter_template_networks(t, used_network_names) for t in tlist] if ttype in _FILTERABLE_TEMPLATES else tlist)
+            for ttype, tlist in assigned_template_data
+        ]
 
         result["site_info"] = {
             "site_name": site_name,
@@ -268,6 +263,21 @@ async def run_post_deployment_validation(
         tracker.update_label("switches", f"Switches ({len(switch_stats)})")
         await tracker.start_step("switches", "Validating switches...")
         result["switches"] = _validate_switch_health(switch_stats, config_events)
+        # Attach LLDP neighbors from UP ports (available regardless of cable tests)
+        for sw_result in result["switches"]:
+            sw_mac = sw_result["mac"]
+            up_ports = up_ports_by_mac.get(sw_mac, [])
+            lldp_neighbors = []
+            for p in up_ports:
+                sys_name = p.get("neighbor_system_name", "")
+                port_desc = p.get("neighbor_port_desc", "")
+                if sys_name or port_desc:
+                    lldp_neighbors.append({
+                        "port_id": p["port_id"],
+                        "neighbor_system_name": sys_name,
+                        "neighbor_port_desc": port_desc,
+                    })
+            sw_result["lldp_neighbors"] = lldp_neighbors
         await tracker.complete_step("switches", f"{len(result['switches'])} switches validated")
 
         # Step 7: Gateway validation
@@ -413,15 +423,16 @@ async def _fetch_one_assigned_template(
 
 async def _fetch_assigned_templates(
     session, org_id: str, site_data: dict
-) -> tuple[list[dict], list[tuple[str, list[dict]]]]:
+) -> tuple[list[dict], list[tuple[str, list[dict]]], dict]:
     """Fetch assigned templates by ID from site info.
 
     Fetches all assigned templates in parallel via ``asyncio.gather()``.
 
     Returns:
-        (site_info_entries, template_data_for_var_scan)
+        (site_info_entries, template_data_for_var_scan, gw_template_config)
         - site_info_entries: list of {"type", "name", "id"} for site_info display
         - template_data_for_var_scan: list of (template_type, [full_template_dict]) for variable extraction
+        - gw_template_config: the raw gateway template dict (or {} if not assigned)
     """
     # Build tasks for all assigned templates
     tasks = []
@@ -431,12 +442,13 @@ async def _fetch_assigned_templates(
             tasks.append(_fetch_one_assigned_template(session, org_id, field, tmpl_type, api_fn, tmpl_id))
 
     if not tasks:
-        return [], []
+        return [], [], {}
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     site_info_entries: list[dict] = []
     var_scan_data: list[tuple[str, list[dict]]] = []
+    gw_template_config: dict = {}
 
     for result in results:
         if isinstance(result, Exception):
@@ -446,10 +458,12 @@ async def _fetch_assigned_templates(
         if data:
             site_info_entries.append({"type": tmpl_type, "name": data.get("name", tmpl_id[:8]), "id": tmpl_id})
             var_scan_data.append((tmpl_type, [data]))
+            if tmpl_type == "gateway_template":
+                gw_template_config = data
         else:
             site_info_entries.append({"type": tmpl_type, "name": tmpl_id[:8], "id": tmpl_id})
 
-    return site_info_entries, var_scan_data
+    return site_info_entries, var_scan_data, gw_template_config
 
 
 async def _fetch_one_template(
@@ -1000,7 +1014,7 @@ def _check_virtual_chassis_from_stats(module_stat: list, expected_firmware: str)
 
         members.append(
             {
-                "member_id": mod.get("vc_member", idx),
+                "member_id": mod.get("vc_member", mod.get("fpc_idx", idx)),
                 "mac": mod.get("mac", ""),
                 "serial": mod.get("serial", ""),
                 "model": mod.get("model", ""),
@@ -1102,20 +1116,6 @@ def _parse_cable_test_results(port_id: str, raw_messages: list) -> dict:
 # ── Gateway validation ───────────────────────────────────────────────────
 
 
-async def _fetch_gw_template_config(session, site_id: str) -> dict:
-    """Fetch the derived gateway template config for a site."""
-    try:
-        tmpl_resp = await mistapi.arun(gatewaytemplates.listSiteGatewayTemplatesDerived, session, site_id, resolve=True)
-        if tmpl_resp.status_code == 200:
-            tmpl_data = tmpl_resp.data
-            if isinstance(tmpl_data, list) and tmpl_data:
-                return tmpl_data[0] if isinstance(tmpl_data[0], dict) else {}
-            elif isinstance(tmpl_data, dict):
-                return tmpl_data
-    except Exception as e:
-        logger.warning("gateway_template_fetch_failed error=%s", str(e))
-    return {}
-
 
 async def _fetch_device_profiles(session, org_id: str, device_configs: list[dict]) -> dict[str, dict]:
     """Fetch device profiles referenced by device configs, cached by unique ID."""
@@ -1209,9 +1209,9 @@ async def _validate_gateways(
         logger.warning("gateway_stats_fetch_failed status=%s", resp.status_code)
         return []
 
-    # Use pre-fetched template or fetch now
+    # Use pre-fetched template or default to empty
     if gw_template_config is None:
-        gw_template_config = await _fetch_gw_template_config(session, site_id)
+        gw_template_config = {}
 
     # Pre-fetch all device configs and port stats in parallel (avoids N+1 per gateway)
     device_config_map: dict[str, dict] = {}
@@ -1314,6 +1314,12 @@ async def _validate_single_gateway(
     ip_configs = {**gw_template_config.get("ip_configs", {}), **deviceprofile_config.get("ip_configs", {}), **device_config.get("ip_configs", {})}
     dhcpd_config = {**gw_template_config.get("dhcpd_config", {}), **deviceprofile_config.get("dhcpd_config", {}), **device_config.get("dhcpd_config", {})}
     networks_list = device_config.get("networks") or deviceprofile_config.get("networks") or gw_template_config.get("networks", [])
+
+    # Resolve Jinja2 variables in the final merged configs
+    port_config = _resolve_all_vars(port_config, site_vars)
+    ip_configs = _resolve_all_vars(ip_configs, site_vars)
+    dhcpd_config = _resolve_all_vars(dhcpd_config, site_vars)
+    networks_list = _resolve_all_vars(networks_list, site_vars)
 
     # Basic checks
     checks: list[dict] = []
@@ -1497,7 +1503,12 @@ async def _validate_single_gateway(
     checks.append({"check": "lan_port_status", "status": lan_status, "value": f"{lan_up}/{len(lan_ports)} UP"})
 
     # Networks with IP and DHCP details (filtered to port-assigned networks)
-    gw_networks: list[dict] = _build_network_details(ip_configs, dhcpd_config, networks_list, site_vars, port_config)
+    gw_networks: list[dict] = _build_network_details(ip_configs, dhcpd_config, networks_list, port_config)
+
+    # Cluster / HA detection
+    cluster_result = None
+    if gw_stat.get("is_ha"):
+        cluster_result = _check_gateway_cluster(gw_stat)
 
     return {
         "device_id": device_id,
@@ -1505,10 +1516,79 @@ async def _validate_single_gateway(
         "mac": mac,
         "model": gw_stat.get("model", ""),
         "checks": checks,
+        "cluster": cluster_result,
         "wan_ports": wan_ports,
         "lan_ports": lan_ports,
         "networks": gw_networks,
     }
+
+
+def _check_gateway_cluster(gw_stat: dict) -> dict:
+    """Check gateway HA cluster nodes using module_stat / module2_stat."""
+    expected_firmware = gw_stat.get("version", gw_stat.get("fw_version", ""))
+    nodes: list[tuple[str, dict]] = []
+
+    # Collect nodes from module_stat (node0) and module2_stat (node1)
+    for idx, stat_key in enumerate(("module_stat", "module2_stat")):
+        mod_list = gw_stat.get(stat_key, [])
+        if isinstance(mod_list, list):
+            for mod in mod_list:
+                if not isinstance(mod, dict):
+                    continue
+                nodes.append((f"node{idx}", mod))
+
+    members: list[dict] = []
+    for default_name, mod in nodes:
+        node_fw = mod.get("version", "")
+        node_status = mod.get("status", "")
+        ha_state = mod.get("ha_state", "")
+
+        fw_match = bool(node_fw and node_fw == expected_firmware)
+        member_checks: list[dict] = [
+            {
+                "check": "firmware_match",
+                "status": "pass" if fw_match else ("fail" if node_fw else "info"),
+                "value": node_fw or "unknown",
+                "expected": expected_firmware,
+            },
+            {
+                "check": "node_connected",
+                "status": "pass" if node_status == "connected" else "fail",
+                "value": node_status or "unknown",
+            },
+        ]
+
+        members.append({
+            "node_name": mod.get("node_name") or mod.get("router_name") or default_name,
+            "mac": mod.get("mac", ""),
+            "serial": mod.get("serial", ""),
+            "model": mod.get("model", ""),
+            "firmware": node_fw,
+            "status": node_status,
+            "ha_state": ha_state,
+            "checks": member_checks,
+        })
+
+    # Cluster-level status from cluster_stat (SSR) or cluster_config (SRX)
+    cluster_state = gw_stat.get("cluster_stat", {}).get("state", "")
+    cluster_config = gw_stat.get("cluster_config")
+    config_summary = None
+    if isinstance(cluster_config, dict):
+        cluster_state = cluster_state or cluster_config.get("status", "")
+        config_summary = {
+            "configuration": cluster_config.get("configuration", ""),
+            "operational": cluster_config.get("operational", ""),
+            "primary_node_health": cluster_config.get("primary_node_health", ""),
+            "secondary_node_health": cluster_config.get("secondary_node_health", ""),
+            "control_link": cluster_config.get("control_link_info", {}),
+            "fabric_link": cluster_config.get("fabric_link_info", {}),
+            "reth_interfaces": cluster_config.get("ethernet_connection", []),
+        }
+
+    result: dict = {"status": cluster_state or "checked", "members": members}
+    if config_summary:
+        result["config"] = config_summary
+    return result
 
 
 _jinja_env = None
@@ -1534,8 +1614,21 @@ def _resolve_vars(text: str, site_vars: dict) -> str:
         return text
 
 
-def _build_network_details(ip_configs: dict, dhcpd_config: dict, networks_list: list, site_vars: dict, port_config: dict | None = None) -> list[dict]:
+def _resolve_all_vars(data: object, site_vars: dict) -> object:
+    """Recursively resolve Jinja2 variables in all string values of a data structure."""
+    if isinstance(data, str):
+        return _resolve_vars(data, site_vars)
+    if isinstance(data, dict):
+        return {k: _resolve_all_vars(v, site_vars) for k, v in data.items()}
+    if isinstance(data, list):
+        return [_resolve_all_vars(item, site_vars) for item in data]
+    return data
+
+
+def _build_network_details(ip_configs: dict, dhcpd_config: dict, networks_list: list, port_config: dict | None = None) -> list[dict]:
     """Build network details (IP, DHCP) for a gateway.
+
+    All Jinja2 variables must be resolved before calling this function.
 
     When *port_config* is provided, only networks that are actually referenced
     as a ``usage`` value in a port are included.  This avoids listing org-level
@@ -1574,21 +1667,18 @@ def _build_network_details(ip_configs: dict, dhcpd_config: dict, networks_list: 
         if not isinstance(dhcp_cfg, dict):
             dhcp_cfg = {}
 
-        # Gateway IP — resolve variables if present
-        raw_ip = ip_cfg.get("ip", "")
+        # Gateway IP (already resolved upstream via _resolve_all_vars)
+        gateway_ip = ip_cfg.get("ip", "")
         netmask = ip_cfg.get("netmask", ip_cfg.get("prefix_length", ""))
-        gateway_ip = _resolve_vars(raw_ip, site_vars)
         if gateway_ip and netmask:
-            # netmask can be dotted (255.255.255.0), CIDR prefix (/24 or 24), or empty
             netmask_str = str(netmask).lstrip("/")
             if "." in netmask_str:
-                # Convert dotted netmask to CIDR
                 cidr = sum(bin(int(x)).count("1") for x in netmask_str.split("."))
                 gateway_ip = f"{gateway_ip}/{cidr}"
             else:
                 gateway_ip = f"{gateway_ip}/{netmask_str}"
 
-        # DHCP status
+        # DHCP status (already resolved upstream via _resolve_all_vars)
         dhcp_enabled = dhcp_cfg.get("enabled", True) if dhcp_cfg else False
         dhcp_type = dhcp_cfg.get("type", "server")
         if not dhcp_cfg or not dhcp_enabled:

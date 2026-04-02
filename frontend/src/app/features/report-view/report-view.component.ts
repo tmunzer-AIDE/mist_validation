@@ -91,6 +91,7 @@ function getCheckStatus(checks: DeviceCheck[], checkId: string): string {
 }
 
 function worstStatus(items: { status: string }[]): string {
+  if (!items.length) return 'info';
   if (items.some((i) => i.status === 'fail')) return 'fail';
   if (items.some((i) => i.status === 'warn')) return 'warn';
   return 'pass';
@@ -156,7 +157,7 @@ export class ReportViewComponent implements OnInit, OnDestroy {
         });
       }
     }
-    return Array.from(groups.values());
+    return Array.from(groups.values()).sort((a, b) => a.variable.localeCompare(b.variable));
   });
 
   toggleVariable(varName: string): void {
@@ -181,10 +182,25 @@ export class ReportViewComponent implements OnInit, OnDestroy {
     }
   }
 
+  sortedAps = computed(() => {
+    const aps = this.report()?.result?.aps ?? [];
+    return [...aps].sort((a, b) => a.name.localeCompare(b.name));
+  });
+
+  sortedSwitches = computed(() => {
+    const switches = this.report()?.result?.switches ?? [];
+    return [...switches].sort((a, b) => a.name.localeCompare(b.name));
+  });
+
+  sortedGateways = computed(() => {
+    const gateways = this.report()?.result?.gateways ?? [];
+    return [...gateways].sort((a, b) => a.name.localeCompare(b.name));
+  });
+
   // Table column definitions
   apColumns = ['status', 'name', 'model', 'connection', 'firmware', 'eth0_speed', 'power', 'config', 'lldp', 'events'];
-  switchColumns = ['status', 'name', 'model', 'connection', 'firmware', 'config', 'cable_tests', 'events'];
-  gatewayColumns = ['status', 'name', 'model', 'connection', 'firmware', 'config', 'wan', 'lan', 'events'];
+  switchColumns = ['status', 'name', 'model', 'type', 'connection', 'firmware', 'config', 'cable_tests', 'events'];
+  gatewayColumns = ['status', 'name', 'model', 'type', 'connection', 'firmware', 'config', 'wan', 'lan', 'events'];
 
   // Expose helpers to template
   getCheckValue = getCheckValue;
@@ -243,9 +259,8 @@ export class ReportViewComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
-    this.loadReport();
+    this.loadReport(true);
     this.subscribeWs();
-    this.startPolling();
   }
 
   ngOnDestroy(): void {
@@ -273,12 +288,14 @@ export class ReportViewComponent implements OnInit, OnDestroy {
     }
   }
 
-  loadReport(): void {
+  loadReport(initial = false): void {
     this.api.get<ReportResponse>(`reports/${this.jobId()}`).subscribe({
       next: (r) => {
         this.report.set(r);
         if (r.status === 'completed' || r.status === 'failed') {
           this.stopPolling();
+        } else if (initial) {
+          this.startPolling();
         }
       },
       error: () => this.stopPolling(),

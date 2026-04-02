@@ -1,11 +1,10 @@
 import os
 import time
 
-import aiosqlite
 from fastapi import APIRouter, Header, HTTPException
 
+from app import db
 from app.core.session import session_store
-from app.db import DATABASE_PATH
 
 router = APIRouter()
 
@@ -31,10 +30,7 @@ async def get_status(authorization: str | None = Header(default=None)):
     db_status = "ok"
     report_count = 0
     try:
-        async with aiosqlite.connect(DATABASE_PATH) as db:
-            async with db.execute("SELECT COUNT(*) FROM reports") as cursor:
-                row = await cursor.fetchone()
-                report_count = row[0] if row else 0
+        report_count = await db.get_report_count()
     except Exception:
         db_status = "error"
 

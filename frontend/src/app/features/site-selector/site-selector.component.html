@@ -111,9 +111,14 @@
       } @else {
         <div class="table-scroll">
           <table mat-table [dataSource]="recentReports()" style="width:100%;">
+            <ng-container matColumnDef="org_name">
+              <th mat-header-cell *matHeaderCellDef>Organization</th>
+              <td mat-cell *matCellDef="let row" class="truncate-cell" [matTooltip]="row.org_name">{{ row.org_name }}</td>
+            </ng-container>
+
             <ng-container matColumnDef="site_name">
               <th mat-header-cell *matHeaderCellDef>Site</th>
-              <td mat-cell *matCellDef="let row">{{ row.site_name }}</td>
+              <td mat-cell *matCellDef="let row" class="truncate-cell" [matTooltip]="row.site_name">{{ row.site_name }}</td>
             </ng-container>
 
             <ng-container matColumnDef="status">
@@ -133,6 +138,7 @@
             <ng-container matColumnDef="action">
               <th mat-header-cell *matHeaderCellDef></th>
               <td mat-cell *matCellDef="let row" class="action-cell">
+                <div style="display: flex;">
                 <button
                   mat-button
                   color="primary"
@@ -144,10 +150,11 @@
                 <button
                   mat-icon-button
                   matTooltip="Delete report"
-                  (click)="deleteReport(row.id)"
+                  (click)="deleteReport(row)"
                 >
                   <mat-icon>delete</mat-icon>
                 </button>
+                </div>
               </td>
             </ng-container>
 

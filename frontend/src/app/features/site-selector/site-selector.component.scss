@@ -100,13 +100,37 @@ mat-card-title {
   letter-spacing: -0.01em;
 }
 
-.view-link {
-  cursor: pointer;
+.truncate-cell {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.action-cell {
+.action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   white-space: nowrap;
-  vertical-align: middle;
+}
+
+.action-link {
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--text-secondary);
+
+  &:hover {
+    color: var(--text-primary);
+  }
+}
+
+.action-delete {
+  color: var(--text-tertiary);
+
+  &:hover {
+    color: var(--status-fail);
+  }
 }
 
 .auto-delete-notice {

@@ -1,4 +1,5 @@
 import { Component, computed, input } from '@angular/core';
+import { NgClass } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 
 function statusLabel(s: string): string {
@@ -44,7 +45,7 @@ function statusIcon(s: string): string {
 @Component({
   selector: 'app-status-badge',
   standalone: true,
-  imports: [MatIconModule],
+  imports: [NgClass, MatIconModule],
   templateUrl: './status-badge.component.html',
   styleUrl: './status-badge.component.scss',
 })
