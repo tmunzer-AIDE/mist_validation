@@ -1,0 +1,58 @@
+<div class="page-container">
+  <div class="page-header">
+    <button mat-icon-button (click)="back.emit()" class="back-btn">
+      <mat-icon>arrow_back</mat-icon>
+    </button>
+    <div class="page-title">Validation Reference</div>
+  </div>
+
+  <p class="page-intro">
+    This page describes all the validation checks performed during a site report.
+    Each check produces a status result used in the report tables, PDF export, and CSV export.
+  </p>
+
+  @for (section of sections; track section.title) {
+    <mat-card class="section-card">
+      <div class="section-header">
+        <mat-icon class="section-icon">{{ section.icon }}</mat-icon>
+        <div>
+          <div class="section-title">{{ section.title }}</div>
+          <div class="section-desc">{{ section.description }}</div>
+        </div>
+      </div>
+
+      @for (check of section.checks; track check.id) {
+        <div class="check-row">
+          <div class="check-name">{{ check.name }}</div>
+          <div class="check-description">{{ check.description }}</div>
+          <div class="check-criteria">
+            @if (check.pass) {
+              <div class="criteria-item">
+                <app-status-badge status="pass" label="Pass" />
+                <span>{{ check.pass }}</span>
+              </div>
+            }
+            @if (check.warn) {
+              <div class="criteria-item">
+                <app-status-badge status="warn" label="Warning" />
+                <span>{{ check.warn }}</span>
+              </div>
+            }
+            @if (check.fail) {
+              <div class="criteria-item">
+                <app-status-badge status="fail" label="Fail" />
+                <span>{{ check.fail }}</span>
+              </div>
+            }
+            @if (!check.pass && !check.warn && !check.fail) {
+              <div class="criteria-item">
+                <app-status-badge status="info" label="Info" />
+                <span>Informational only</span>
+              </div>
+            }
+          </div>
+        </div>
+      }
+    </mat-card>
+  }
+</div>

@@ -19,19 +19,51 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <img src="https://github.com/tmunzer/mist_validation/raw/main/._readme/img/report.png" width="60%" />
 
 ### Validation Checks
-- **Template Variables** — Verifies all required template variables are defined
-- **Configuration Events** — Reviews recent configuration change events
-- **Device Events** — Analyzes device-level events and alerts
-- **Access Points** — Validates AP health, firmware, connectivity status, and configuration
-- **Switches** — Checks switch health, Virtual Chassis status, standalone and aggregated interfaces configurations and port status
-- **Gateways** — Validates gateway health and configuration, WAN and LAN ports status, standalone and aggregated interfaces configurations and port status
-- **Optic Modules** — Reports transceiver details (model, serial, part number) and validates Rx/Tx power levels for switches and gateways
-- **Cable Tests** — Runs TDR cable diagnostics on switch ports (optional, requires write access and site group membership)
+
+#### Site-Level Checks
+- **Template Variables** — Verifies all Jinja2 variables referenced in templates (RF, network, gateway, site templates) are defined in site settings
+- **Device Events** — Fetches device events from the last 24 hours and correlates trigger/clear event pairs (see [MONITORED_EVENTS.md](MONITORED_EVENTS.md) for the full list)
+
+#### Per-Device Checks (Access Points, Switches, Gateways)
+
+| Check | AP | Switch | Gateway | Description |
+|-------|:--:|:------:|:-------:|-------------|
+| Device Name | x | x | x | Device has a name configured (not empty) |
+| Firmware Version | x | x | x | Running firmware compared against Mist recommended version (see [Firmware Version Validation](#firmware-version-validation)) |
+| Connection Status | x | x | x | Device is connected to Mist Cloud |
+| Configuration Status | x | x | x | Latest configuration event succeeded |
+| Eth0 Port Speed | x | | | AP uplink port speed (pass >= 1 Gbps, warn < 1 Gbps) |
+| Power Constrained | x | | | AP is not power-limited by its PoE source |
+| LLDP Neighbor | x | | | Reports upstream switch name and port (informational) |
+| Optic Modules | | x | x | Validates Rx/Tx power levels on SFP/SFP+ transceivers (see [Optic Module Power Levels](#optic-module-power-levels)) |
+| WAN Port Status | | | x | All configured WAN ports are UP |
+| LAN Port Status | | | x | All configured LAN ports are UP |
+
+#### Virtual Chassis Checks (Switches)
+
+| Check | Description |
+|-------|-------------|
+| Member Present | Each VC member is present and has an active role |
+| Firmware Match | Member firmware matches the primary switch firmware |
+| VC Ports UP | At least 2 VC interconnect links are UP per member |
+
+#### Gateway Cluster Checks (HA Gateways)
+
+| Check | Description |
+|-------|-------------|
+| Node Connected | Each cluster node is connected |
+| Firmware Match | Node firmware matches the primary gateway firmware |
+
+#### Cable Tests (Optional)
+- **TDR Cable Diagnostics** — Runs Time Domain Reflectometry tests on switch copper ports to verify cable integrity. Requires write access and site group membership (see [Cable Test Prerequisites](#cable-test-prerequisites))
 
 ### Report Generation
 - **PDF Reports** — Professional formatted reports with device details and status badges
 - **CSV Export** — Structured data export for further analysis
 - **Real-time Progress** — WebSocket-based live progress updates during validation
+
+### Validation Reference
+- **Built-in Reference Page** — Accessible from the site selector, lists all validation checks with their pass/warn/fail criteria
 
 ### Authentication
 - Login with Mist credentials (username/password) or API token
@@ -132,6 +164,39 @@ volumes:
 ```
 
 ## Validation Thresholds
+
+### Firmware Version Validation
+
+Running firmware is compared against a recommended version for each device model. The recommended version is determined through a priority chain:
+
+#### Default Recommended Versions (Mist API)
+
+| Device Type | Pass (green) | Warning (orange) | Fail (red) |
+|------------|-------------|-----------------|-----------|
+| Access Points | Version tagged `baseline` (or highest available if no baseline) | Any other version | Versions tagged `deprecated` or `alpha` |
+| Switches (Junos) | Version tagged `junos_suggested` | All other versions | — |
+| SRX Gateways (Junos) | Version tagged `junos_suggested` | All other versions | — |
+| SSR Gateways | Latest stable version | All other versions | — |
+
+#### Auto-Upgrade Override
+
+When auto-upgrade is configured in the Mist org or site settings, the recommended version is overridden accordingly:
+
+**Access Points** (site settings take priority over org settings):
+
+| Auto-Upgrade Mode | Recommended Version |
+|-------------------|-------------------|
+| `stable` | Version tagged `baseline` (same as default) |
+| `beta` | Version tagged `alpha` |
+| `custom` | Version from `custom_versions` per model (unlisted models fall back to `baseline`) |
+
+**Switches** (org settings only): per-model version from `switch.auto_upgrade.custom_versions`
+
+**SRX Gateways** (org settings only): blanket version from `juniper_srx.auto_upgrade.version`, or per-model from `custom_versions`
+
+When the recommended version cannot be determined (e.g., API error or unknown model), the firmware check falls back to informational status (no pass/fail).
+
+The report shows the running firmware version with the recommended version displayed below it when the firmware does not match.
 
 ### Optic Module Power Levels
 

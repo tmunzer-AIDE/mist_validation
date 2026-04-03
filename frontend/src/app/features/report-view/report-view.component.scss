@@ -482,6 +482,12 @@ tr.clickable-row {
   color: var(--text-tertiary);
 }
 
+.fw-expected {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
 .mono {
   font-family: var(--font-mono);
   font-size: 13px;

@@ -76,11 +76,11 @@
   @if (report() && report()!.status === 'completed' && report()!.result) {
     <!-- Export buttons -->
     <div class="export-row">
-      <button mat-stroked-button (click)="exportPdf()">
+      <button matButton="tonal" (click)="exportPdf()">
         <mat-icon>picture_as_pdf</mat-icon>
         Export PDF
       </button>
-      <button mat-stroked-button (click)="exportCsv()">
+      <button matButton="tonal" (click)="exportCsv()">
         <mat-icon>download</mat-icon>
         Export CSV
       </button>
@@ -273,7 +273,12 @@
             <ng-container matColumnDef="firmware">
               <th mat-header-cell *matHeaderCellDef>Firmware</th>
               <td mat-cell *matCellDef="let r" class="mono">
-                {{ getCheckValue(r.checks, 'firmware_version') || '—' }}
+                <span [class]="'status-' + getCheckStatus(r.checks, 'firmware_version')">
+                  {{ getCheckValue(r.checks, 'firmware_version') || '—' }}
+                </span>
+                @if (getCheckExpected(r.checks, 'firmware_version') && getCheckStatus(r.checks, 'firmware_version') !== 'pass') {
+                  <div class="fw-expected">rec: {{ getCheckExpected(r.checks, 'firmware_version') }}</div>
+                }
               </td>
             </ng-container>
             <ng-container matColumnDef="eth0_speed">
@@ -373,7 +378,12 @@
             <ng-container matColumnDef="firmware">
               <th mat-header-cell *matHeaderCellDef>Firmware</th>
               <td mat-cell *matCellDef="let r" class="mono">
-                {{ getCheckValue(r.checks, 'firmware_version') || '—' }}
+                <span [class]="'status-' + getCheckStatus(r.checks, 'firmware_version')">
+                  {{ getCheckValue(r.checks, 'firmware_version') || '—' }}
+                </span>
+                @if (getCheckExpected(r.checks, 'firmware_version') && getCheckStatus(r.checks, 'firmware_version') !== 'pass') {
+                  <div class="fw-expected">rec: {{ getCheckExpected(r.checks, 'firmware_version') }}</div>
+                }
               </td>
             </ng-container>
             <ng-container matColumnDef="config">
@@ -475,7 +485,12 @@
             <ng-container matColumnDef="firmware">
               <th mat-header-cell *matHeaderCellDef>Firmware</th>
               <td mat-cell *matCellDef="let r" class="mono">
-                {{ getCheckValue(r.checks, 'firmware_version') || '—' }}
+                <span [class]="'status-' + getCheckStatus(r.checks, 'firmware_version')">
+                  {{ getCheckValue(r.checks, 'firmware_version') || '—' }}
+                </span>
+                @if (getCheckExpected(r.checks, 'firmware_version') && getCheckStatus(r.checks, 'firmware_version') !== 'pass') {
+                  <div class="fw-expected">rec: {{ getCheckExpected(r.checks, 'firmware_version') }}</div>
+                }
               </td>
             </ng-container>
             <ng-container matColumnDef="config">

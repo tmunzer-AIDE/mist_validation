@@ -2,8 +2,9 @@ import { Component, signal } from '@angular/core';
 import { LoginComponent } from './features/login/login.component';
 import { SiteSelectorComponent } from './features/site-selector/site-selector.component';
 import { ReportViewComponent } from './features/report-view/report-view.component';
+import { ValidationReferenceComponent } from './features/validation-reference/validation-reference.component';
 
-type AppState = 'login' | 'site_selector' | 'report';
+type AppState = 'login' | 'site_selector' | 'report' | 'validation_reference';
 
 export interface AuthInfo {
   user_email: string;
@@ -17,7 +18,7 @@ export interface AuthInfo {
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [LoginComponent, SiteSelectorComponent, ReportViewComponent],
+  imports: [LoginComponent, SiteSelectorComponent, ReportViewComponent, ValidationReferenceComponent],
   templateUrl: './app.component.html',
 })
 export class AppComponent {

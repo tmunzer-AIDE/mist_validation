@@ -37,6 +37,9 @@
           "defaultConfiguration": "production"
         },
         "serve": {
+          "options": {
+            "port": 4321
+          },
           "builder": "@angular/build:dev-server",
           "configurations": {
             "production": { "buildTarget": "mist-reports:build:production" },

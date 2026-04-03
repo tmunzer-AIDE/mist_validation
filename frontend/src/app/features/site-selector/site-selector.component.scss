@@ -20,6 +20,12 @@
   letter-spacing: -0.02em;
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .user-info {
   font-size: 13px;
   color: var(--text-secondary);
@@ -46,6 +52,19 @@
   width: 100%;
 }
 
+.reference-btn {
+  border-radius: 5px;
+  margin-right: 20px;
+}
+
+.delete-btn {
+  &:hover {
+    color: var(--status-fail);
+  }
+
+  transition: color 0.1s ease-in-out;
+}
+
 .cable-warn {
   font-size: 12px;
   color: var(--status-warn);
@@ -53,6 +72,9 @@
   display: flex;
   align-items: center;
   gap: 4px;
+  border-radius: 5px;
+  padding: 10px 10px;
+  border: 1px solid;
 }
 
 .cable-info {
@@ -62,9 +84,9 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  color: var(--mat-button-filled-container-color, var(--mat-sys-primary));;
+  color: var(--mat-button-filled-container-color, var(--mat-sys-primary));
   padding: 10px;
-  border: solid 1px var(--mat-button-filled-container-color, var(--mat-sys-primary));;
+  border: solid 1px var(--mat-button-filled-container-color, var(--mat-sys-primary));
   border-radius: 5px;
   background-color: aliceblue;
 }

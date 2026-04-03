@@ -12,6 +12,7 @@ export interface DeviceCheck {
   check: string;
   status: string;
   value: string;
+  expected?: string;
 }
 
 export interface DeviceEvent {

@@ -89,6 +89,7 @@ export class SiteSelectorComponent implements OnInit {
 
   @Output() orgSelected = new EventEmitter<{ id: string; name: string; role?: string }>();
   @Output() reportStarted = new EventEmitter<string>();
+  @Output() showReference = new EventEmitter<void>();
 
   private api = inject(ApiService);
   private fb = inject(FormBuilder);

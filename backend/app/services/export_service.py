@@ -92,6 +92,18 @@ def _p_status(status: str) -> Paragraph:
     return Paragraph(str(status), _CELL_BLUE)
 
 
+def _p_firmware(check: dict) -> Paragraph:
+    """Render firmware cell with status coloring and recommended version."""
+    fw = check.get("value", "")
+    status = check.get("status", "info")
+    expected = check.get("expected", "")
+    style = {"pass": _CELL_GREEN, "fail": _CELL_RED, "warn": _CELL_ORANGE}.get(status, _CELL_STYLE)
+    text = _esc(fw)
+    if expected and status != "pass":
+        text = f"{_esc(fw)}<br/><font size='5'>rec: {_esc(expected)}</font>"
+    return Paragraph(text, style)
+
+
 def _p_updown(is_up: bool) -> Paragraph:
     """Colored UP/DOWN cell."""
     if is_up:
@@ -286,7 +298,7 @@ def generate_pdf(report) -> bytes:
                 _p(_esc(ap.get("name", ""))),
                 _p(ap.get("model", "")),
                 _p_status(conn_status) if conn_status != "pass" else _p(checks.get("connection_status", {}).get("value", "")),
-                _p(checks.get("firmware_version", {}).get("value", "")),
+                _p_firmware(checks.get("firmware_version", {})),
                 _p(checks.get("eth0_port_speed", {}).get("value", "")),
                 Paragraph("<b>Yes</b>", _CELL_ORANGE) if power_status == "warn" else _p("No"),
                 _p(checks.get("config_status", {}).get("value", "")),
@@ -312,7 +324,7 @@ def generate_pdf(report) -> bytes:
                 _p(_esc(sw.get("name", ""))),
                 _p(sw.get("model", "")),
                 _p(checks.get("connection_status", {}).get("value", "")),
-                _p(checks.get("firmware_version", {}).get("value", "")),
+                _p_firmware(checks.get("firmware_version", {})),
                 _p(checks.get("config_status", {}).get("value", "")),
                 Paragraph(ct_text, ct_style),
             ])
@@ -396,7 +408,7 @@ def generate_pdf(report) -> bytes:
                 _p(_esc(gw.get("name", ""))),
                 _p(gw.get("model", "")),
                 _p(checks.get("connection_status", {}).get("value", "")),
-                _p(checks.get("firmware_version", {}).get("value", "")),
+                _p_firmware(checks.get("firmware_version", {})),
                 _p(checks.get("config_status", {}).get("value", "")),
                 Paragraph(f"<b>{checks.get('wan_port_status', {}).get('value', '')}</b>", _CELL_GREEN if wan_s == "pass" else _CELL_RED if wan_s == "fail" else _CELL_ORANGE),
                 Paragraph(f"<b>{checks.get('lan_port_status', {}).get('value', '')}</b>", _CELL_GREEN if lan_s == "pass" else _CELL_RED if lan_s == "fail" else _CELL_ORANGE),
@@ -550,12 +562,16 @@ def generate_csv_zip(report) -> bytes:
             ap_rows: list[dict] = []
             for ap in aps:
                 checks = _checks_values(ap)
+                checks_full = _checks_map(ap)
+                fw_check = checks_full.get("firmware_version", {})
                 lldp = ap.get("lldp_neighbor", {})
                 ap_rows.append({
                     "name": ap.get("name", ""), "device_id": ap.get("device_id", ""),
                     "mac": ap.get("mac", ""), "model": ap.get("model", ""),
                     "connection_status": checks.get("connection_status", ""),
                     "firmware_version": checks.get("firmware_version", ""),
+                    "firmware_status": fw_check.get("status", ""),
+                    "firmware_recommended": fw_check.get("expected", ""),
                     "eth0_port_speed": checks.get("eth0_port_speed", ""),
                     "power_constrained": checks.get("power_constrained", ""),
                     "config_status": checks.get("config_status", ""),
@@ -563,7 +579,8 @@ def generate_csv_zip(report) -> bytes:
                     "lldp_port_desc": lldp.get("port_desc", ""),
                 })
             zf.writestr("aps.csv", _dict_list_to_csv(ap_rows, [
-                "name", "device_id", "mac", "model", "connection_status", "firmware_version",
+                "name", "device_id", "mac", "model", "connection_status",
+                "firmware_version", "firmware_status", "firmware_recommended",
                 "eth0_port_speed", "power_constrained", "config_status", "lldp_system_name", "lldp_port_desc",
             ]))
 
@@ -573,15 +590,20 @@ def generate_csv_zip(report) -> bytes:
             sw_rows: list[dict] = []
             for sw in switches:
                 checks = _checks_values(sw)
+                checks_full = _checks_map(sw)
+                fw_check = checks_full.get("firmware_version", {})
                 sw_rows.append({
                     "name": sw.get("name", ""), "device_id": sw.get("device_id", ""),
                     "mac": sw.get("mac", ""), "model": sw.get("model", ""),
                     "connection_status": checks.get("connection_status", ""),
                     "firmware_version": checks.get("firmware_version", ""),
+                    "firmware_status": fw_check.get("status", ""),
+                    "firmware_recommended": fw_check.get("expected", ""),
                     "config_status": checks.get("config_status", ""),
                 })
             zf.writestr("switches.csv", _dict_list_to_csv(sw_rows, [
-                "name", "device_id", "mac", "model", "connection_status", "firmware_version", "config_status",
+                "name", "device_id", "mac", "model", "connection_status",
+                "firmware_version", "firmware_status", "firmware_recommended", "config_status",
             ]))
 
             ct_rows: list[dict] = []
@@ -628,17 +650,22 @@ def generate_csv_zip(report) -> bytes:
             gw_rows: list[dict] = []
             for gw in gateways:
                 checks = _checks_values(gw)
+                checks_full = _checks_map(gw)
+                fw_check = checks_full.get("firmware_version", {})
                 gw_rows.append({
                     "name": gw.get("name", ""), "device_id": gw.get("device_id", ""),
                     "mac": gw.get("mac", ""), "model": gw.get("model", ""),
                     "connection_status": checks.get("connection_status", ""),
                     "firmware_version": checks.get("firmware_version", ""),
+                    "firmware_status": fw_check.get("status", ""),
+                    "firmware_recommended": fw_check.get("expected", ""),
                     "config_status": checks.get("config_status", ""),
                     "wan_port_status": checks.get("wan_port_status", ""),
                     "lan_port_status": checks.get("lan_port_status", ""),
                 })
             zf.writestr("gateways.csv", _dict_list_to_csv(gw_rows, [
-                "name", "device_id", "mac", "model", "connection_status", "firmware_version",
+                "name", "device_id", "mac", "model", "connection_status",
+                "firmware_version", "firmware_status", "firmware_recommended",
                 "config_status", "wan_port_status", "lan_port_status",
             ]))
 

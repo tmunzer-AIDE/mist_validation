@@ -90,6 +90,10 @@ function getCheckStatus(checks: DeviceCheck[], checkId: string): string {
   return checks.find((c) => c.check === checkId)?.status ?? 'info';
 }
 
+function getCheckExpected(checks: DeviceCheck[], checkId: string): string {
+  return checks.find((c) => c.check === checkId)?.expected ?? '';
+}
+
 function worstStatus(items: { status: string }[]): string {
   if (!items.length) return 'info';
   if (items.some((i) => i.status === 'fail')) return 'fail';
@@ -205,6 +209,7 @@ export class ReportViewComponent implements OnInit, OnDestroy {
   // Expose helpers to template
   getCheckValue = getCheckValue;
   getCheckStatus = getCheckStatus;
+  getCheckExpected = getCheckExpected;
   deviceOverallStatus = worstStatus;
 
   lldpDisplay(device: DeviceResult & { lldp_neighbor?: { system_name?: string; port_desc?: string } }): string {
