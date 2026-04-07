@@ -1,7 +1,5 @@
 # Mist Post-Deployment Validation Report Generator
 
-<img src="https://github.com/tmunzer/mist_validation/raw/main/._readme/img/banner.png" width="100%" />
-
 A full-stack web application that validates Juniper Mist deployments (Access Points, Switches, and Gateways) and generates comprehensive PDF/CSV reports. Authenticate against the Mist API, run validation checks on sites, and get real-time progress updates via WebSocket.
 
 ## MIT LICENSE
@@ -14,9 +12,49 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-## Features
+## Screenshots
 
-<img src="https://github.com/tmunzer/mist_validation/raw/main/._readme/img/report.png" width="60%" />
+**Site Selector & Recent Reports**
+
+<img src="https://github.com/tmunzer/mist_validation/raw/main/._readme/img/main.png" width="80%" />
+
+---
+
+**Report — Summary & Site Variables**
+
+<img src="https://github.com/tmunzer/mist_validation/raw/main/._readme/img/report_1.png" width="80%" />
+
+---
+
+**Report — Device List (APs, Switches, Gateways)**
+
+<img src="https://github.com/tmunzer/mist_validation/raw/main/._readme/img/report_2.png" width="80%" />
+
+---
+
+**Device Detail — Access Point**
+
+<img src="https://github.com/tmunzer/mist_validation/raw/main/._readme/img/report_ap.png" width="80%" />
+
+---
+
+**Device Detail — Switch (Virtual Chassis, LLDP, Optics)**
+
+<img src="https://github.com/tmunzer/mist_validation/raw/main/._readme/img/report_switch.png" width="80%" />
+
+---
+
+**Device Detail — Gateway (Health Checks & WAN Ports)**
+
+<img src="https://github.com/tmunzer/mist_validation/raw/main/._readme/img/report_gateway_1.png" width="80%" />
+
+---
+
+**Device Detail — Gateway (LAN Ports & Networks)**
+
+<img src="https://github.com/tmunzer/mist_validation/raw/main/._readme/img/report_gateway_2.png" width="80%" />
+
+## Features
 
 ### Validation Checks
 
@@ -244,10 +282,6 @@ Set `TDR_SITE_GROUP` to an empty string to disable site group gating (cable test
                        │
               Mist Cloud API
 ```
-
-## Screenshots
-
-*Screenshots will be added here*
 
 ## Support
 
