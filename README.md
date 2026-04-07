@@ -16,43 +16,40 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 **Site Selector & Recent Reports**
 
-<img src="https://github.com/tmunzer-AIDE/mist_validation/raw/main/._readme/img/main.png" width="80%" />
+<img src="https://github.com/tmunzer-AIDE/mist_validation/raw/main/._readme/img/main.png" width="45%" />
 
 ---
 
 **Report — Summary & Site Variables**
 
-<img src="https://github.com/tmunzer-AIDE/mist_validation/raw/main/._readme/img/report_1.png" width="80%" />
+<img src="https://github.com/tmunzer-AIDE/mist_validation/raw/main/._readme/img/report_1.png" width="45%" />
 
 ---
 
 **Report — Device List (APs, Switches, Gateways)**
 
-<img src="https://github.com/tmunzer-AIDE/mist_validation/raw/main/._readme/img/report_2.png" width="80%" />
+<img src="https://github.com/tmunzer-AIDE/mist_validation/raw/main/._readme/img/report_2.png" width="45%" />
 
 ---
 
 **Device Detail — Access Point**
 
-<img src="https://github.com/tmunzer-AIDE/mist_validation/raw/main/._readme/img/report_ap.png" width="80%" />
+<img src="https://github.com/tmunzer-AIDE/mist_validation/raw/main/._readme/img/report_ap.png" width="45%" />
 
 ---
 
-**Device Detail — Switch (Virtual Chassis, LLDP, Optics)**
+**Device Detail — Switch**
 
-<img src="https://github.com/tmunzer-AIDE/mist_validation/raw/main/._readme/img/report_switch.png" width="80%" />
-
----
-
-**Device Detail — Gateway (Health Checks & WAN Ports)**
-
-<img src="https://github.com/tmunzer-AIDE/mist_validation/raw/main/._readme/img/report_gateway_1.png" width="80%" />
+<img src="https://github.com/tmunzer-AIDE/mist_validation/raw/main/._readme/img/report_switch.png" width="45%" />
 
 ---
 
-**Device Detail — Gateway (LAN Ports & Networks)**
+**Device Detail — Gateway**
+<div>
+<img src="https://github.com/tmunzer-AIDE/mist_validation/raw/main/._readme/img/report_gateway_1.png" width="45%" />
+<img src="https://github.com/tmunzer-AIDE/mist_validation/raw/main/._readme/img/report_gateway_2.png" width="45%" />
+</div>
 
-<img src="https://github.com/tmunzer-AIDE/mist_validation/raw/main/._readme/img/report_gateway_2.png" width="80%" />
 
 ## Features
 
