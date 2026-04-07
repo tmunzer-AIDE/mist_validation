@@ -33,6 +33,8 @@
       }
     </div>
 
+    <div class="section-block">
+    <div class="section-title">Health Checks</div>
     <table mat-table [dataSource]="data.device.checks" class="checks-table">
       <ng-container matColumnDef="check">
         <th mat-header-cell *matHeaderCellDef>Check</th>
@@ -55,14 +57,14 @@
       <tr mat-header-row *matHeaderRowDef="checksColumns"></tr>
       <tr mat-row *matRowDef="let row; columns: checksColumns;"></tr>
     </table>
+    </div>
   </div>
-
-  <mat-divider></mat-divider>
   }
 
   @if (data.type === 'switch') {
   <!-- Virtual Chassis -->
   @if (switchData.virtual_chassis?.members?.length) {
+  <div class="section-block">
   <div class="section-title">Virtual Chassis Members</div>
   <table mat-table [dataSource]="sortedVcMembers">
     <ng-container matColumnDef="member_id">
@@ -90,11 +92,11 @@
     <tr mat-header-row *matHeaderRowDef="vcColumns"></tr>
     <tr mat-row *matRowDef="let row; columns: vcColumns;"></tr>
   </table>
+  </div>
   }
 
-  <mat-divider></mat-divider>
-
   <!-- Cable tests -->
+  <div class="section-block">
   <div class="section-title">Cable Test Results</div>
   @if (switchData.cable_tests.length === 0) {
   <div class="no-data">No cable test results available.</div>
@@ -132,10 +134,11 @@
     <tr mat-row *matRowDef="let row; columns: cableColumns;"></tr>
   </table>
   }
+  </div>
 
   <!-- LLDP Neighbors (shown when no cable tests, or always if neighbors exist) -->
   @if (switchData.cable_tests.length === 0 && switchData.lldp_neighbors.length) {
-  <mat-divider></mat-divider>
+  <div class="section-block">
   <div class="section-title">LLDP Neighbors</div>
   <table mat-table [dataSource]="sortedLldpNeighbors">
     <ng-container matColumnDef="port_id">
@@ -151,11 +154,12 @@
     <tr mat-header-row *matHeaderRowDef="lldpColumns"></tr>
     <tr mat-row *matRowDef="let row; columns: lldpColumns;"></tr>
   </table>
+  </div>
   }
 
   <!-- Optic Modules (switch) -->
   @if (sortedPortOptics.length) {
-  <mat-divider></mat-divider>
+  <div class="section-block">
   <div class="section-title">Optic Modules</div>
   <div class="optics-legend">Rx threshold: warn &lt; -20 dBm, fail &lt; -25 dBm &bull; Tx threshold: warn &lt; -8 dBm, fail &lt; -12 dBm</div>
   <table mat-table [dataSource]="sortedPortOptics">
@@ -194,12 +198,14 @@
     <tr mat-header-row *matHeaderRowDef="opticsColumns"></tr>
     <tr mat-row *matRowDef="let row; columns: opticsColumns;"></tr>
   </table>
+  </div>
   }
   }
 
   @if (data.type === 'gateway') {
   <!-- Cluster -->
   @if (gatewayData.cluster?.members?.length) {
+  <div class="section-block">
   <div class="section-title">Cluster Nodes</div>
   <table mat-table [dataSource]="sortedClusterMembers">
     <ng-container matColumnDef="node_name">
@@ -277,11 +283,11 @@
     }
   </div>
   }
-
-  <mat-divider></mat-divider>
+  </div>
   }
 
   <!-- WAN ports -->
+  <div class="section-block">
   <div class="section-title">WAN Ports</div>
   @if (gatewayData.wan_ports.length === 0) {
   <div class="no-data">No WAN ports data.</div>
@@ -318,10 +324,10 @@
     <tr mat-row *matRowDef="let row; columns: wanColumns;"></tr>
   </table>
   }
-
-  <mat-divider></mat-divider>
+  </div>
 
   <!-- LAN ports -->
+  <div class="section-block">
   <div class="section-title">LAN Ports</div>
   @if (gatewayData.lan_ports.length === 0) {
   <div class="no-data">No LAN ports data.</div>
@@ -385,10 +391,10 @@
   }
   }
   }
-
-  <mat-divider></mat-divider>
+  </div>
 
   <!-- Networks -->
+  <div class="section-block">
   <div class="section-title">Networks</div>
   @if (gatewayData.networks.length === 0) {
   <div class="no-data">No network data.</div>
@@ -422,10 +428,11 @@
     <tr mat-row *matRowDef="let row; columns: networkColumns;"></tr>
   </table>
   }
+  </div>
 
   <!-- Optic Modules (gateway) -->
   @if (sortedPortOptics.length) {
-  <mat-divider></mat-divider>
+  <div class="section-block">
   <div class="section-title">Optic Modules</div>
   <div class="optics-legend">Rx threshold: warn &lt; -20 dBm, fail &lt; -25 dBm &bull; Tx threshold: warn &lt; -8 dBm, fail &lt; -12 dBm</div>
   <table mat-table [dataSource]="sortedPortOptics">
@@ -464,14 +471,13 @@
     <tr mat-header-row *matHeaderRowDef="opticsColumns"></tr>
     <tr mat-row *matRowDef="let row; columns: opticsColumns;"></tr>
   </table>
+  </div>
   }
   }
 
   <!-- Device Events (shown for all device types) -->
   @if (data.device.events && data.device.events.length > 0) {
-  @if (data.type !== 'ap') {
-  <mat-divider></mat-divider>
-  }
+  <div class="section-block">
   <div class="section-title events-header">
     <span>Device Events (24h)</span>
     <mat-slide-toggle [checked]="showAllEvents()" (change)="showAllEvents.set($event.checked)">
@@ -508,6 +514,7 @@
     <tr mat-row *matRowDef="let row; columns: eventColumns;"></tr>
   </table>
   }
+  </div>
   }
 </div>
 

@@ -4,7 +4,6 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatTableModule } from '@angular/material/table';
 
 import { MatIconModule } from '@angular/material/icon';
-import { MatDividerModule } from '@angular/material/divider';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { StatusBadgeComponent } from '../../shared/components/status-badge/status-badge.component';
 
@@ -193,7 +192,6 @@ function comparePortIds(a: string, b: string): number {
     MatButtonModule,
     MatTableModule,
     MatIconModule,
-    MatDividerModule,
     MatSlideToggleModule,
     StatusBadgeComponent,
   ],
