@@ -8,7 +8,12 @@ from datetime import datetime, timedelta, timezone
 
 import aiosqlite
 
-DATABASE_PATH = os.environ.get("DATABASE_PATH", "./reports.db")
+_DEFAULT_DB_DIR = "/data"
+_DEFAULT_DB_PATH = os.path.join(_DEFAULT_DB_DIR, "reports.db")
+DATABASE_PATH = os.environ.get(
+    "DATABASE_PATH",
+    _DEFAULT_DB_PATH if os.path.isdir(_DEFAULT_DB_DIR) else "./reports.db",
+)
 
 _CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS reports (
@@ -32,6 +37,7 @@ CREATE INDEX IF NOT EXISTS idx_user_created ON reports(mist_user_id, created_at)
 
 async def init_db() -> None:
     """Create tables if they do not exist."""
+    os.makedirs(os.path.dirname(DATABASE_PATH) or ".", exist_ok=True)
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.executescript(_CREATE_TABLE_SQL)
         # Migration: add org_name column to existing databases
