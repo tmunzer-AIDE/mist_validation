@@ -59,20 +59,23 @@ async def create_report(
     background_tasks: BackgroundTasks,
     session: SessionData = Depends(get_session),
 ):
+    org_id = str(request.org_id)
+    site_id = str(request.site_id)
+
     # Verify org access
-    if request.org_id not in session.org_ids:
+    if org_id not in session.org_ids:
         raise HTTPException(status_code=403, detail="Access denied to this organization")
 
     # Cable test safety checks
     if request.include_cable_tests:
-        if not session.can_write(request.org_id):
+        if not session.can_write(org_id):
             raise HTTPException(
                 status_code=403,
                 detail="Cable tests require write access to the organization.",
             )
         if TDR_SITE_GROUP:
             mist = MistService(
-                org_id=request.org_id,
+                org_id=org_id,
                 cloud_region=session.mist_cloud,
                 api_token=session.mist_token,
                 cookies=session.mist_cookies,
@@ -89,7 +92,7 @@ async def create_report(
                     detail=f"Cable tests are not available. The site group '{TDR_SITE_GROUP}' does not exist.",
                 )
             # Check site membership via site's sitegroup_ids (same as sites.py)
-            site_data = await mist.get_site(request.site_id)
+            site_data = await mist.get_site(site_id)
             if tdr_group["id"] not in site_data.get("sitegroup_ids", []):
                 raise HTTPException(
                     status_code=403,
@@ -97,22 +100,22 @@ async def create_report(
                 )
 
     job_id = str(uuid.uuid4())
-    org_name = _resolve_org_name(session, request.org_id)
+    org_name = _resolve_org_name(session, org_id)
     job = await db.create_job(
         job_id=job_id,
         mist_user_id=session.user_identifier,
-        org_id=request.org_id,
+        org_id=org_id,
         org_name=org_name,
-        site_id=request.site_id,
+        site_id=site_id,
         include_cable_tests=request.include_cable_tests,
     )
 
     background_tasks.add_task(
         validation_service.run_post_deployment_validation,
         job_id=job_id,
-        site_id=request.site_id,
+        site_id=site_id,
         cloud_region=session.mist_cloud,
-        org_id=request.org_id,
+        org_id=org_id,
         include_cable_tests=request.include_cable_tests,
         progress_callback=_progress_callback,
         token=session.mist_token,

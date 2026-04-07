@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 logger = logging.getLogger(__name__)
 
 SESSION_TTL = 86400  # 24 hours
+MAX_SESSIONS = 1000
 
 
 @dataclass
@@ -63,6 +64,10 @@ class SessionStore:
         self._sessions: dict[str, SessionData] = {}
 
     def create(self, data: SessionData) -> str:
+        if len(self._sessions) >= MAX_SESSIONS:
+            oldest_key = min(self._sessions, key=lambda k: self._sessions[k].created_at)
+            del self._sessions[oldest_key]
+            logger.info("session_evicted reason=max_sessions_reached")
         session_id = secrets.token_urlsafe(32)
         self._sessions[session_id] = data
         return session_id
@@ -93,7 +98,7 @@ class SessionStore:
     def make_user_identifier(
         *, cloud: str, email: str | None = None, token: str | None = None
     ) -> str:
-        """Hash (credential + cloud) → 16-char hex.
+        """Hash (credential + cloud) → 64-char hex (full SHA-256).
 
         Same opaque format for both auth methods.
         No clear text is ever stored in the DB.
@@ -104,7 +109,7 @@ class SessionStore:
             raw = f"{token}|{cloud}"
         else:
             raise ValueError("email or token required")
-        return hashlib.sha256(raw.encode()).hexdigest()[:16]
+        return hashlib.sha256(raw.encode()).hexdigest()
 
 
 session_store = SessionStore()

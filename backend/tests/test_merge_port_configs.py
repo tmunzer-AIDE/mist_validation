@@ -6,7 +6,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.services.validation_service import _merge_port_configs, _validate_single_gateway
+from app.services.validation_service import (
+    _expand_port_config_ranges,
+    _merge_port_configs,
+    _parse_interface_key,
+    _validate_single_gateway,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -38,9 +43,11 @@ class TestMergePortConfigs:
             }
         }
         result = _merge_port_configs(template, {}, device)
-        port = result["ge-0/0/2-3"]
-        assert port["aggregated"] is True
-        assert port["ae_idx"] == "2"
+        # Range keys are expanded into individual interfaces
+        for port_key in ("ge-0/0/2", "ge-0/0/3"):
+            port = result[port_key]
+            assert port["aggregated"] is True
+            assert port["ae_idx"] == "2"
 
     def test_shallow_merge_regression(self):
         """Shallow merge loses fields — deep merge preserves them."""
@@ -51,7 +58,8 @@ class TestMergePortConfigs:
         assert "aggregated" not in shallow["ge-0/0/2-3"]
 
         deep = _merge_port_configs({"port_config": template_pc}, {}, {"port_config": device_pc})
-        assert deep["ge-0/0/2-3"]["aggregated"] is True
+        assert deep["ge-0/0/2"]["aggregated"] is True
+        assert deep["ge-0/0/3"]["aggregated"] is True
 
     def test_device_adds_new_port(self):
         template = {"port_config": {"ge-0/0/0": {"usage": "wan"}}}
@@ -72,9 +80,10 @@ class TestMergePortConfigs:
         profile = {"port_config": {"ge-0/0/2-3": {"usage": "lan", "networks": ["net1"]}}}
         device = {"port_config": {"ge-0/0/2-3": {"port_network": "mgmt"}}}
         result = _merge_port_configs(template, profile, device)
-        assert result["ge-0/0/2-3"]["aggregated"] is True
-        assert result["ge-0/0/2-3"]["usage"] == "lan"
-        assert result["ge-0/0/2-3"]["port_network"] == "mgmt"
+        for port_key in ("ge-0/0/2", "ge-0/0/3"):
+            assert result[port_key]["aggregated"] is True
+            assert result[port_key]["usage"] == "lan"
+            assert result[port_key]["port_network"] == "mgmt"
 
     def test_empty_configs(self):
         assert _merge_port_configs({}, {}, {}) == {}
@@ -251,3 +260,158 @@ class TestUnconfiguredPortFiltering:
         all_ifaces = [p["interface"] for p in result["wan_ports"] + result["lan_ports"]]
         assert "ge-0/0/0" in all_ifaces
         assert "ge-0/0/2" in all_ifaces
+
+
+# ---------------------------------------------------------------------------
+# _parse_interface_key
+# ---------------------------------------------------------------------------
+
+class TestParseInterfaceKey:
+
+    def test_single_interface(self):
+        assert _parse_interface_key("ge-0/0/2") == ["ge-0/0/2"]
+
+    def test_simple_range(self):
+        assert _parse_interface_key("ge-0/0/2-5") == [
+            "ge-0/0/2", "ge-0/0/3", "ge-0/0/4", "ge-0/0/5",
+        ]
+
+    def test_comma_separated(self):
+        assert _parse_interface_key("ge-0/0/2,ge-0/0/6") == [
+            "ge-0/0/2", "ge-0/0/6",
+        ]
+
+    def test_comma_and_range_combined(self):
+        assert _parse_interface_key("ge-0/0/2-4,ge-0/0/6") == [
+            "ge-0/0/2", "ge-0/0/3", "ge-0/0/4", "ge-0/0/6",
+        ]
+
+    def test_both_segments_ranged(self):
+        assert _parse_interface_key("ge-0/0/2-3,ge-0/0/6-7") == [
+            "ge-0/0/2", "ge-0/0/3", "ge-0/0/6", "ge-0/0/7",
+        ]
+
+    def test_no_slash_passthrough(self):
+        assert _parse_interface_key("ae2") == ["ae2"]
+
+    def test_different_interface_types(self):
+        assert _parse_interface_key("xe-0/0/10-12") == [
+            "xe-0/0/10", "xe-0/0/11", "xe-0/0/12",
+        ]
+        assert _parse_interface_key("mge-0/0/0-2") == [
+            "mge-0/0/0", "mge-0/0/1", "mge-0/0/2",
+        ]
+
+    def test_reversed_range_passthrough(self):
+        assert _parse_interface_key("ge-0/0/7-2") == ["ge-0/0/7-2"]
+
+    def test_multi_digit_fpc_pic(self):
+        assert _parse_interface_key("ge-1/2/0-2") == [
+            "ge-1/2/0", "ge-1/2/1", "ge-1/2/2",
+        ]
+
+
+# ---------------------------------------------------------------------------
+# _expand_port_config_ranges
+# ---------------------------------------------------------------------------
+
+class TestExpandPortConfigRanges:
+
+    def test_single_interface_passthrough(self):
+        pc = {"ge-0/0/0": {"usage": "wan"}}
+        assert _expand_port_config_ranges(pc) == {"ge-0/0/0": {"usage": "wan"}}
+
+    def test_simple_range(self):
+        pc = {"ge-0/0/2-4": {"usage": "lan", "networks": ["corp"]}}
+        result = _expand_port_config_ranges(pc)
+        assert set(result.keys()) == {"ge-0/0/2", "ge-0/0/3", "ge-0/0/4"}
+        for cfg in result.values():
+            assert cfg["usage"] == "lan"
+            assert cfg["networks"] == ["corp"]
+
+    def test_comma_separated(self):
+        pc = {"ge-0/0/2,ge-0/0/6": {"usage": "lan"}}
+        result = _expand_port_config_ranges(pc)
+        assert set(result.keys()) == {"ge-0/0/2", "ge-0/0/6"}
+
+    def test_comma_and_range_combined(self):
+        pc = {"ge-0/0/2-4,ge-0/0/6": {"usage": "lan"}}
+        result = _expand_port_config_ranges(pc)
+        assert set(result.keys()) == {"ge-0/0/2", "ge-0/0/3", "ge-0/0/4", "ge-0/0/6"}
+
+    def test_non_standard_name_passthrough(self):
+        pc = {"ae2": {"usage": "lan", "aggregated": True}}
+        assert _expand_port_config_ranges(pc) == pc
+
+    def test_deep_copy_independence(self):
+        pc = {"ge-0/0/2-3": {"usage": "lan", "networks": ["corp"]}}
+        result = _expand_port_config_ranges(pc)
+        result["ge-0/0/2"]["networks"].append("guest")
+        assert result["ge-0/0/3"]["networks"] == ["corp"]
+
+    def test_empty_input(self):
+        assert _expand_port_config_ranges({}) == {}
+
+    def test_mixed_keys(self):
+        pc = {
+            "ge-0/0/0": {"usage": "wan"},
+            "ge-0/0/2-4": {"usage": "lan"},
+            "ae2": {"aggregated": True},
+        }
+        result = _expand_port_config_ranges(pc)
+        assert set(result.keys()) == {
+            "ge-0/0/0", "ge-0/0/2", "ge-0/0/3", "ge-0/0/4", "ae2",
+        }
+
+
+# ---------------------------------------------------------------------------
+# Cross-layer range expansion in merge
+# ---------------------------------------------------------------------------
+
+class TestCrossLayerRangeExpansion:
+
+    def test_device_single_overrides_template_range(self):
+        """Device-level 'ge-0/0/5' merges with template 'ge-0/0/2-7'."""
+        template = {
+            "port_config": {
+                "ge-0/0/2-7": {
+                    "usage": "lan",
+                    "aggregated": True,
+                    "ae_idx": "2",
+                    "networks": ["corp", "byod"],
+                    "port_network": "mgmt",
+                }
+            }
+        }
+        device = {
+            "port_config": {
+                "ge-0/0/5": {
+                    "usage": "lan",
+                    "networks": ["special"],
+                    "port_network": "secure",
+                }
+            }
+        }
+        result = _merge_port_configs(template, {}, device)
+        # ge-0/0/5 has device overrides merged with template base
+        assert result["ge-0/0/5"]["aggregated"] is True
+        assert result["ge-0/0/5"]["ae_idx"] == "2"
+        assert result["ge-0/0/5"]["networks"] == ["special"]
+        assert result["ge-0/0/5"]["port_network"] == "secure"
+        # Other ports from the range keep template config
+        for p in (2, 3, 4, 6, 7):
+            key = f"ge-0/0/{p}"
+            assert key in result
+            assert result[key]["aggregated"] is True
+            assert result[key]["networks"] == ["corp", "byod"]
+            assert result[key]["port_network"] == "mgmt"
+
+    def test_device_comma_key_overrides_template_range(self):
+        """Device comma key partially overlaps template range."""
+        template = {"port_config": {"ge-0/0/0-3": {"usage": "lan", "port_network": "mgmt"}}}
+        device = {"port_config": {"ge-0/0/1,ge-0/0/3": {"port_network": "secure"}}}
+        result = _merge_port_configs(template, {}, device)
+        assert result["ge-0/0/0"]["port_network"] == "mgmt"
+        assert result["ge-0/0/1"]["port_network"] == "secure"
+        assert result["ge-0/0/2"]["port_network"] == "mgmt"
+        assert result["ge-0/0/3"]["port_network"] == "secure"

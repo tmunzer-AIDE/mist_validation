@@ -65,7 +65,9 @@ async def list_sites(
             tdr_group_name=TDR_SITE_GROUP,
             tdr_group_exists=tdr_group_exists,
         )
-    except (MistAPIError, ConfigurationError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except MistAPIError:
+        raise HTTPException(status_code=502, detail="Unable to retrieve sites from Mist API")
+    except ConfigurationError:
+        raise HTTPException(status_code=500, detail="Server configuration error")
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to fetch sites")

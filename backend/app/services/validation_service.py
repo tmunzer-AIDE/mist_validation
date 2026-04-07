@@ -6,11 +6,15 @@ switch health (including VC and cable tests), and gateway health.
 """
 
 import asyncio
+import copy
+import functools
 import json
 import logging
+import re
 from datetime import datetime, timezone
 
 import mistapi
+from mistapi import APISession
 from mistapi.api.v1.orgs import (
     deviceprofiles as org_deviceprofiles,
 )
@@ -237,14 +241,12 @@ async def run_post_deployment_validation(
         )
         await tracker.complete_step("variables", f"{len(result['template_variables'])} variables checked")
 
-        # Step 4: Fetch config events for all device types
-        await tracker.start_step("config_events", "Fetching device configuration events...")
-        config_events = await _fetch_config_events(session, site_id)
+        # Step 4+5: Fetch all device events (single API call), partition config vs raw
+        await tracker.start_step("config_events", "Fetching device events...")
+        config_events, raw_device_events = await _fetch_all_device_events(session, site_id)
         await tracker.complete_step("config_events")
 
-        # Step 5: Fetch and correlate device events (trigger/clear pairs)
-        await tracker.start_step("device_events", "Fetching device events (24h)...")
-        raw_device_events = await _fetch_device_events(session, site_id)
+        await tracker.start_step("device_events", "Correlating device events...")
         events_by_mac = _correlate_device_events(raw_device_events)
         total_correlated = sum(len(v) for v in events_by_mac.values())
         await tracker.complete_step("device_events", f"{total_correlated} events correlated")
@@ -449,7 +451,7 @@ def _extract_jinja2_vars(data: object) -> set[str]:
 # ── Site group resolution ────────────────────────────────────────────────
 
 
-async def _resolve_sitegroup_names(session, org_id: str, sitegroup_ids: list[str]) -> list[str]:
+async def _resolve_sitegroup_names(session: APISession, org_id: str, sitegroup_ids: list[str]) -> list[str]:
     """Resolve site group UUIDs to names by fetching all org site groups."""
     if not sitegroup_ids:
         return []
@@ -531,7 +533,7 @@ def _parse_ssr_versions(versions: list[dict]) -> str:
 
 
 async def _fetch_firmware_versions(
-    session,
+    session: APISession,
     org_id: str,
     ap_models: set[str],
     switch_models: set[str],
@@ -692,7 +694,7 @@ async def _fetch_one_assigned_template(
 
 
 async def _fetch_assigned_templates(
-    session, org_id: str, site_data: dict
+    session: APISession, org_id: str, site_data: dict
 ) -> tuple[list[dict], list[tuple[str, list[dict]]], dict]:
     """Fetch assigned templates by ID from site info.
 
@@ -753,7 +755,7 @@ async def _fetch_one_template(
         return None
 
 
-async def _fetch_derived_sources(session, site_id: str) -> list[tuple[str, list[dict]]]:
+async def _fetch_derived_sources(session: APISession, site_id: str) -> list[tuple[str, list[dict]]]:
     """Fetch derived objects (networks, services, service policies) for variable scanning."""
     results = await asyncio.gather(
         *[_fetch_one_template(session, site_id, ttype, fn, kw) for ttype, fn, kw in _DERIVED_SOURCES]
@@ -761,7 +763,7 @@ async def _fetch_derived_sources(session, site_id: str) -> list[tuple[str, list[
     return [r for r in results if r is not None]
 
 
-async def _fetch_wlan_info(session, site_id: str) -> dict:
+async def _fetch_wlan_info(session: APISession, site_id: str) -> dict:
     """Fetch derived WLANs and split into org WLANs (from templates) and site WLANs.
 
     Returns dict with keys: org_wlans, site_wlans, all_wlans_raw.
@@ -837,39 +839,46 @@ def _validate_template_variables(
     return results
 
 
-# ── Config events ────────────────────────────────────────────────────────
+# ── Device events (single fetch, partitioned) ───────────────────────────
 
 _CONFIG_EVENT_PREFIXES = ("AP_CONFIG", "SW_CONFIG", "GW_CONFIG")
 
 
-async def _fetch_config_events(session, site_id: str) -> dict[str, dict]:
-    """Fetch recent system events and return the latest config event per device MAC.
+async def _fetch_all_device_events(
+    session: APISession, site_id: str,
+) -> tuple[dict[str, dict], list[dict]]:
+    """Fetch all device events for the site in the last 24h with a single API call.
 
     Returns:
-        dict mapping device MAC → {"type": event_type, "timestamp": ..., "status": "pass"|"fail"}
+        (config_events, raw_events) where:
+        - config_events: dict mapping device MAC → latest config event summary
+        - raw_events: full list of event dicts for trigger/clear correlation
     """
-    latest_by_mac: dict[str, dict] = {}
+    config_events: dict[str, dict] = {}
+    all_events: list[dict] = []
 
     try:
         resp = await mistapi.arun(
             devices.searchSiteDeviceEvents,
             session,
             site_id,
-            type="AP_CONFIG*,SW_CONFIG*,GW_CONFIG*",
             limit=1000,
             duration="24h",
         )
         if resp.status_code != 200:
-            logger.warning("config_events_fetch_failed status=%s", resp.status_code)
-            return latest_by_mac
+            logger.warning("device_events_fetch_failed status=%s", resp.status_code)
+            return config_events, all_events
 
-        all_events = resp.data.get("results", resp.data) if isinstance(resp.data, dict) else resp.data
-        if not isinstance(all_events, list):
-            logger.debug("config_events_unexpected_format data_type=%s", type(resp.data).__name__)
-            return latest_by_mac
+        data = resp.data
+        if isinstance(data, dict):
+            results = data.get("results")
+            all_events = results if isinstance(results, list) else []
+        elif isinstance(data, list):
+            all_events = data
 
-        logger.debug("config_events_fetched count=%d", len(all_events))
+        logger.debug("device_events_fetched count=%d", len(all_events))
 
+        # Partition: extract config events
         for ev in all_events:
             if not isinstance(ev, dict):
                 continue
@@ -882,20 +891,20 @@ async def _fetch_config_events(session, site_id: str) -> dict[str, dict]:
                 continue
 
             timestamp = ev.get("timestamp", 0)
-            existing = latest_by_mac.get(mac)
+            existing = config_events.get(mac)
             if existing and existing["timestamp"] >= timestamp:
                 continue
 
             is_success = ev_type.endswith("_CONFIGURED") or ev_type.endswith("_CONFIG_CHANGED_BY_USER")
-            latest_by_mac[mac] = {
+            config_events[mac] = {
                 "type": ev_type,
                 "timestamp": timestamp,
                 "status": "pass" if is_success else "fail",
             }
     except Exception as e:
-        logger.warning("config_events_fetch_error error=%s", str(e))
+        logger.warning("device_events_fetch_error error=%s", str(e))
 
-    return latest_by_mac
+    return config_events, all_events
 
 
 def _add_config_status_check(checks: list[dict], mac: str, config_events: dict[str, dict]) -> None:
@@ -917,40 +926,6 @@ def _add_config_status_check(checks: list[dict], mac: str, config_events: dict[s
                 "value": "No config event found",
             }
         )
-
-
-# ── Device events (trigger/clear correlation) ──────────────────────────
-
-
-async def _fetch_device_events(session, site_id: str) -> list[dict]:
-    """Fetch all device events for the site in the last 24h.
-
-    Returns the raw list of event dicts from the Mist API.
-    """
-    all_events: list[dict] = []
-    try:
-        resp = await mistapi.arun(
-            devices.searchSiteDeviceEvents,
-            session,
-            site_id,
-            limit=1000,
-            duration="24h",
-        )
-        if resp.status_code != 200:
-            logger.warning("device_events_fetch_failed status=%s", resp.status_code)
-            return all_events
-
-        data = resp.data
-        if isinstance(data, dict):
-            all_events = data.get("results", [])
-        elif isinstance(data, list):
-            all_events = data
-
-        logger.debug("device_events_fetched count=%d", len(all_events))
-    except Exception as e:
-        logger.warning("device_events_fetch_error error=%s", str(e))
-
-    return all_events
 
 
 def _correlate_device_events(raw_events: list[dict]) -> dict[str, list[dict]]:
@@ -1184,7 +1159,7 @@ def _is_copper_port(port_id: str) -> bool:
 
 
 async def _fetch_switch_ports(
-    session, site_id: str,
+    session: APISession, site_id: str,
 ) -> tuple[dict[str, list[dict]], dict[str, list[dict]]]:
     """Fetch all switch ports in a single API call.
 
@@ -1375,7 +1350,7 @@ def _check_virtual_chassis_from_stats(module_stat: list, expected_firmware: str)
     return {"status": "checked", "members": members}
 
 
-async def _run_cable_test(session, site_id: str, device_id: str, port_id: str) -> dict:
+async def _run_cable_test(session: APISession, site_id: str, device_id: str, port_id: str) -> dict:
     """Run a cable test on a single switch port using mistapi device_utils."""
     try:
         from mistapi.device_utils.ex import cableTest
@@ -1464,7 +1439,7 @@ def _parse_cable_test_results(port_id: str, raw_messages: list) -> dict:
 
 
 
-async def _fetch_device_profiles(session, org_id: str, device_configs: list[dict]) -> dict[str, dict]:
+async def _fetch_device_profiles(session: APISession, org_id: str, device_configs: list[dict]) -> dict[str, dict]:
     """Fetch device profiles referenced by device configs, cached by unique ID."""
     profile_ids: set[str] = set()
     for cfg in device_configs:
@@ -1548,7 +1523,7 @@ def _filter_template_networks(tmpl: dict, used_networks: set[str]) -> dict:
 
 
 async def _validate_gateways(
-    session, org_id: str, site_id: str, gw_stats: list[dict],
+    session: APISession, org_id: str, site_id: str, gw_stats: list[dict],
     config_events: dict[str, dict], site_vars: dict,
     gw_template_config: dict | None = None, fw_versions: dict | None = None,
 ) -> list[dict]:
@@ -1621,21 +1596,75 @@ async def _validate_gateways(
     return list(results)
 
 
+_RANGE_RE = re.compile(r"^(\d+)-(\d+)$")
+
+
+def _parse_interface_key(key: str) -> list[str]:
+    """Expand an interface key that may contain ranges or commas.
+
+    Supported formats (can be combined):
+      - ``ge-0/0/2-7``  → ge-0/0/2 … ge-0/0/7
+      - ``ge-0/0/2,ge-0/0/6`` → ge-0/0/2, ge-0/0/6
+      - ``ge-0/0/2-4,ge-0/0/6`` → ge-0/0/2, ge-0/0/3, ge-0/0/4, ge-0/0/6
+
+    Non-standard names without ``/`` (e.g. ``ae2``) pass through unchanged.
+    """
+    result: list[str] = []
+    for segment in key.split(","):
+        segment = segment.strip()
+        if not segment:
+            continue
+        slash_idx = segment.rfind("/")
+        if slash_idx == -1:
+            result.append(segment)
+            continue
+        prefix = segment[: slash_idx + 1]
+        port_spec = segment[slash_idx + 1 :]
+        m = _RANGE_RE.match(port_spec)
+        if m:
+            start, end = int(m.group(1)), int(m.group(2))
+            if start <= end:
+                result.extend(f"{prefix}{n}" for n in range(start, end + 1))
+            else:
+                result.append(segment)
+        else:
+            result.append(segment)
+    return result
+
+
+def _expand_port_config_ranges(port_config: dict) -> dict:
+    """Expand range/comma keys in a port_config dict into individual interfaces.
+
+    Each expanded interface receives an independent deep copy of the config so
+    that downstream mutations on one port don't affect others.
+    """
+    expanded: dict[str, dict] = {}
+    for key, cfg in port_config.items():
+        interfaces = _parse_interface_key(key)
+        for iface in interfaces:
+            expanded[iface] = copy.deepcopy(cfg) if isinstance(cfg, dict) else cfg
+    return expanded
+
+
 def _merge_port_configs(*configs: dict) -> dict:
     """Merge port_config from multiple config layers (template → profile → device).
 
-    Each port entry is merged individually so device-level overrides don't lose
-    template-level fields like ``aggregated`` and ``ae_idx``.
+    Range keys (e.g. ``ge-0/0/2-7``) are expanded into individual interfaces
+    before merging so that a device-level override for a single port correctly
+    inherits template-level fields like ``aggregated`` and ``ae_idx``.
     """
     all_keys: set[str] = set()
+    expanded_configs: list[dict] = []
     for cfg in configs:
-        all_keys.update(cfg.get("port_config", {}).keys())
+        expanded_pc = _expand_port_config_ranges(cfg.get("port_config", {}))
+        expanded_configs.append(expanded_pc)
+        all_keys.update(expanded_pc.keys())
 
     merged: dict[str, dict] = {}
     for key in all_keys:
         port_merged: dict = {}
-        for cfg in configs:
-            pc = cfg.get("port_config", {}).get(key, {})
+        for epc in expanded_configs:
+            pc = epc.get(key, {})
             if isinstance(pc, dict):
                 port_merged.update(pc)
         merged[key] = port_merged
@@ -1953,17 +1982,12 @@ def _check_gateway_cluster(gw_stat: dict) -> dict:
     return result
 
 
-_jinja_env = None
-
-
+@functools.lru_cache(maxsize=1)
 def _get_jinja_env():
-    """Get or create shared Jinja2 SandboxedEnvironment (module-level singleton)."""
-    global _jinja_env
-    if _jinja_env is None:
-        from app.utils.variables import create_jinja_env
+    """Get or create shared Jinja2 SandboxedEnvironment (thread-safe singleton)."""
+    from app.utils.variables import create_jinja_env
 
-        _jinja_env = create_jinja_env()
-    return _jinja_env
+    return create_jinja_env()
 
 
 def _resolve_vars(text: str, site_vars: dict) -> str:
@@ -2004,21 +2028,7 @@ def _build_network_details(ip_configs: dict, dhcpd_config: dict, networks_list: 
 
     # Filter to only networks actually assigned to a port
     if port_config:
-        used_networks: set[str] = set()
-        for cfg in port_config.values():
-            if not isinstance(cfg, dict):
-                continue
-            usage = cfg.get("usage", "")
-            if usage and usage not in ("wan", "lan"):
-                used_networks.add(usage)
-            # Trunk ports: networks list + port_network
-            for net in cfg.get("networks", []):
-                if isinstance(net, str):
-                    used_networks.add(net)
-            pn = cfg.get("port_network", "")
-            if pn:
-                used_networks.add(pn)
-        network_names = network_names & used_networks
+        network_names = network_names & _used_networks_from_port_config(port_config)
 
     results: list[dict] = []
     for net_name in sorted(network_names):

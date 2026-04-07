@@ -19,6 +19,52 @@
   margin-top: 4px;
 }
 
+.checks-overview {
+  padding-top: 16px;
+}
+
+.summary-strip {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.summary-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+
+  mat-icon {
+    font-size: 15px;
+    width: 15px;
+    height: 15px;
+  }
+}
+
+.pill-pass {
+  background: var(--status-pass-bg);
+  color: var(--status-pass);
+}
+
+.pill-fail {
+  background: var(--status-fail-bg);
+  color: var(--status-fail);
+}
+
+.pill-warn {
+  background: var(--status-warn-bg);
+  color: var(--status-warn);
+}
+
+.checks-table {
+  font-size: 13px;
+}
+
 .section-title {
   font-size: 11px;
   font-weight: 600;

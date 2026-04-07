@@ -38,7 +38,7 @@ async def init_db() -> None:
         try:
             await db.execute("ALTER TABLE reports ADD COLUMN org_name TEXT DEFAULT ''")
             await db.commit()
-        except Exception:
+        except aiosqlite.OperationalError:
             pass  # Column already exists
 
 

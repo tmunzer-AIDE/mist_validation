@@ -1,13 +1,34 @@
 import logging
+import time
 
-from fastapi import APIRouter, Cookie, HTTPException
+from fastapi import APIRouter, Cookie, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.core.session import SessionData, SessionStore, session_store
-from app.services.mist_service import get_cloud_list, get_host_for_cloud
+from app.services.mist_service import ALLOWED_HOSTS, get_cloud_list, get_host_for_cloud
 
 logger = logging.getLogger(__name__)
+
+# Simple in-memory rate limiter for login endpoint
+_LOGIN_RATE_LIMIT: dict[str, list[float]] = {}
+_LOGIN_RATE_WINDOW = 60  # seconds
+_LOGIN_RATE_MAX = 10  # max attempts per window
+
+
+def _check_login_rate_limit(client_ip: str) -> None:
+    """Raise 429 if the client IP exceeds the login rate limit."""
+    now = time.monotonic()
+    timestamps = _LOGIN_RATE_LIMIT.get(client_ip, [])
+    # Prune old entries
+    timestamps = [t for t in timestamps if now - t < _LOGIN_RATE_WINDOW]
+    if len(timestamps) >= _LOGIN_RATE_MAX:
+        raise HTTPException(status_code=429, detail="Too many login attempts. Try again later.")
+    timestamps.append(now)
+    if timestamps:
+        _LOGIN_RATE_LIMIT[client_ip] = timestamps
+    else:
+        _LOGIN_RATE_LIMIT.pop(client_ip, None)
 
 router = APIRouter()
 
@@ -42,11 +63,17 @@ def _set_session_cookie(response: JSONResponse, session_id: str) -> None:
 
 
 def _clear_session_cookie(response: JSONResponse) -> None:
-    response.delete_cookie(key=SESSION_COOKIE, path="/")
+    response.delete_cookie(
+        key=SESSION_COOKIE,
+        path="/",
+        httponly=True,
+        secure=True,
+        samesite="lax",
+    )
 
 
 @router.post("/auth/login")
-async def login(request: LoginRequest):
+async def login(request: LoginRequest, req: Request):
     """
     Authenticate against Mist Cloud, create a server-side session,
     and return an httpOnly session cookie.
@@ -55,6 +82,8 @@ async def login(request: LoginRequest):
     """
     from mistapi import APISession
 
+    _check_login_rate_limit(req.client.host if req.client else "unknown")
+
     # Resolve host and cloud
     cloud = request.cloud or "Global 01"
     host = request.host
@@ -62,6 +91,8 @@ async def login(request: LoginRequest):
         host = get_host_for_cloud(cloud)
     if not host:
         raise HTTPException(status_code=400, detail="Cloud or host required")
+    if host not in ALLOWED_HOSTS:
+        raise HTTPException(status_code=400, detail="Invalid API host")
 
     try:
         session = APISession(
@@ -209,11 +240,9 @@ async def logout(session_id: str = Cookie(default="")):
     return response
 
 
-_ROLE_PRIORITY = {"admin": 3, "write": 2, "read": 1}
-
-
 def _orgs_from_privileges(privileges: list[dict]) -> list[dict]:
     """Build org list from raw privileges array (keeps highest role per org)."""
+    role_priority = SessionData._ROLE_PRIORITY
     orgs_seen: dict[str, dict] = {}
     for priv in privileges:
         if isinstance(priv, dict) and priv.get("scope") == "org":
@@ -222,7 +251,7 @@ def _orgs_from_privileges(privileges: list[dict]) -> list[dict]:
             role = priv.get("role", "read")
             if org_id:
                 existing = orgs_seen.get(org_id)
-                if not existing or _ROLE_PRIORITY.get(role, 0) > _ROLE_PRIORITY.get(existing.get("role", ""), 0):
+                if not existing or role_priority.get(role, 0) > role_priority.get(existing.get("role", ""), 0):
                     orgs_seen[org_id] = {"id": org_id, "name": org_name, "role": role}
     return list(orgs_seen.values())
 

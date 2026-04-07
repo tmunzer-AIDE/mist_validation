@@ -42,6 +42,8 @@ _HOST_MAP = {
     "APAC 03": "api.gc7.mist.com",
 }
 
+ALLOWED_HOSTS = set(_HOST_MAP.values())
+
 
 class MistService:
     """Service for interacting with Mist API using mistapi package."""
@@ -132,6 +134,8 @@ class MistService:
             logger.debug("org_info_retrieved org_id=%s", self.org_id)
             return result.data
 
+        except MistAPIError:
+            raise
         except Exception as e:
             logger.error("get_org_info_failed error=%s", str(e))
             raise MistAPIError("Mist API request failed") from e
@@ -149,6 +153,8 @@ class MistService:
             logger.debug("sites_retrieved org_id=%s count=%d", self.org_id, len(result.data))
             return result.data
 
+        except MistAPIError:
+            raise
         except Exception as e:
             logger.error("get_sites_failed error=%s", str(e))
             raise MistAPIError("Mist API request failed") from e
@@ -163,6 +169,8 @@ class MistService:
                 raise MistAPIError(f"Failed to get site groups: {result.status_code}")
             logger.debug("site_groups_retrieved org_id=%s count=%d", self.org_id, len(result.data))
             return result.data
+        except MistAPIError:
+            raise
         except Exception as e:
             logger.error("get_site_groups_failed error=%s", str(e))
             raise MistAPIError("Mist API request failed") from e
@@ -178,6 +186,8 @@ class MistService:
             logger.debug("site_retrieved site_id=%s", site_id)
             return result.data
 
+        except MistAPIError:
+            raise
         except Exception as e:
             logger.error("get_site_failed site_id=%s error=%s", site_id, str(e))
             raise MistAPIError("Mist API request failed") from e
@@ -198,6 +208,8 @@ class MistService:
             logger.debug("wlans_retrieved site_id=%s count=%d", site_id, len(result.data))
             return result.data
 
+        except MistAPIError:
+            raise
         except Exception as e:
             logger.error("get_wlans_failed site_id=%s error=%s", site_id, str(e))
             raise MistAPIError("Mist API request failed") from e
@@ -215,6 +227,8 @@ class MistService:
             logger.debug("templates_retrieved org_id=%s count=%d", self.org_id, len(result.data))
             return result.data
 
+        except MistAPIError:
+            raise
         except Exception as e:
             logger.error("get_templates_failed error=%s", str(e))
             raise MistAPIError("Mist API request failed") from e
@@ -235,6 +249,8 @@ class MistService:
             logger.debug("devices_retrieved site_id=%s count=%d", site_id, len(result.data))
             return result.data
 
+        except MistAPIError:
+            raise
         except Exception as e:
             logger.error("get_devices_failed site_id=%s error=%s", site_id, str(e))
             raise MistAPIError("Mist API request failed") from e

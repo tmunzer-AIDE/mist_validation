@@ -10,6 +10,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+MAX_SUBSCRIPTIONS = 20
+
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -29,6 +31,11 @@ async def websocket_endpoint(websocket: WebSocket):
             msg_type = data.get("type", "")
             if msg_type == "subscribe":
                 channel = data.get("channel", "")
+                if not isinstance(channel, str) or len(channel) > 128:
+                    continue
+                current_subs = ws_manager._client_channels.get(websocket, set())
+                if len(current_subs) >= MAX_SUBSCRIPTIONS:
+                    continue
                 if channel and await _authorize_channel(channel, session):
                     ws_manager.subscribe(websocket, channel)
             elif msg_type == "unsubscribe":

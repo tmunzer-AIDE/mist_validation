@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from pydantic import BaseModel
 
 
@@ -14,8 +16,8 @@ class SitesResponse(BaseModel):
 
 
 class ReportCreateRequest(BaseModel):
-    site_id: str
-    org_id: str
+    site_id: UUID
+    org_id: UUID
     include_cable_tests: bool = False
 
 

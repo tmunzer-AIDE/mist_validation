@@ -145,6 +145,47 @@ def _make_table(data: list[list], col_widths: list[float] | None = None) -> Tabl
     return table
 
 
+def _add_optics_table(elements: list, port_optics: list[dict], w: float) -> None:
+    """Add an optics table + legend to the PDF elements list."""
+    cw_op = [w * 0.12, w * 0.2, w * 0.14, w * 0.14, w * 0.14, w * 0.14, w * 0.12]
+    data = [[_ph("Port"), _ph("Model"), _ph("Serial"), _ph("Part Number"), _ph("Rx (dBm)"), _ph("Tx (dBm)"), _ph("Temp (\u00b0C)")]]
+    for o in port_optics:
+        data.append([
+            _p(o.get("port_id", "")),
+            _p(o.get("xcvr_model", "")),
+            _p(o.get("xcvr_serial", "")),
+            _p(o.get("xcvr_part_number", "")),
+            _p_optics_power(o.get("rx_power"), o.get("rx_power_status", "")),
+            _p_optics_power(o.get("tx_power"), o.get("tx_power_status", "")),
+            _p(str(o["temperature"]) if o.get("temperature") is not None else ""),
+        ])
+    elements.append(_make_table(data, cw_op))
+    elements.append(Paragraph(
+        "Rx threshold: warn &lt; -20 dBm, fail &lt; -25 dBm &bull; "
+        "Tx threshold: warn &lt; -8 dBm, fail &lt; -12 dBm",
+        ParagraphStyle("OpticsLegend", fontSize=6, leading=8, textColor=colors.grey),
+    ))
+
+
+def _optics_csv_rows(device_list: list[dict], name_key: str, mac_key: str) -> list[dict]:
+    """Build optics CSV rows for a list of devices (switches or gateways)."""
+    rows: list[dict] = []
+    for dev in device_list:
+        for o in dev.get("port_optics", []):
+            rows.append({
+                name_key: dev.get("name", ""), mac_key: dev.get("mac", ""),
+                "port_id": o.get("port_id", ""), "media_type": o.get("media_type", ""),
+                "xcvr_model": o.get("xcvr_model", ""), "xcvr_serial": o.get("xcvr_serial", ""),
+                "xcvr_part_number": o.get("xcvr_part_number", ""),
+                "rx_power": o.get("rx_power", ""), "rx_power_status": o.get("rx_power_status", ""),
+                "tx_power": o.get("tx_power", ""), "tx_power_status": o.get("tx_power_status", ""),
+                "temperature": o.get("temperature", ""),
+                "bias_current": o.get("bias_current", ""),
+                "voltage": o.get("voltage", ""),
+            })
+    return rows
+
+
 def _adapt_report(report):
     """Adapt a dict report to a SimpleNamespace for attribute access."""
     if isinstance(report, dict):
@@ -370,26 +411,8 @@ def generate_pdf(report) -> bytes:
                     ])
                 elements.append(_make_table(data, cw_ct))
 
-            port_optics = sw.get("port_optics", [])
-            if port_optics:
-                cw_op = [w * 0.12, w * 0.2, w * 0.14, w * 0.14, w * 0.14, w * 0.14, w * 0.12]
-                data = [[_ph("Port"), _ph("Model"), _ph("Serial"), _ph("Part Number"), _ph("Rx (dBm)"), _ph("Tx (dBm)"), _ph("Temp (\u00b0C)")]]
-                for o in port_optics:
-                    data.append([
-                        _p(o.get("port_id", "")),
-                        _p(o.get("xcvr_model", "")),
-                        _p(o.get("xcvr_serial", "")),
-                        _p(o.get("xcvr_part_number", "")),
-                        _p_optics_power(o.get("rx_power"), o.get("rx_power_status", "")),
-                        _p_optics_power(o.get("tx_power"), o.get("tx_power_status", "")),
-                        _p(str(o["temperature"]) if o.get("temperature") is not None else ""),
-                    ])
-                elements.append(_make_table(data, cw_op))
-                elements.append(Paragraph(
-                    "Rx threshold: warn &lt; -20 dBm, fail &lt; -25 dBm &bull; "
-                    "Tx threshold: warn &lt; -8 dBm, fail &lt; -12 dBm",
-                    ParagraphStyle("OpticsLegend", fontSize=6, leading=8, textColor=colors.grey),
-                ))
+            if sw.get("port_optics"):
+                _add_optics_table(elements, sw["port_optics"], w)
 
             elements.append(Spacer(1, 0.3 * cm))
 
@@ -464,26 +487,8 @@ def generate_pdf(report) -> bytes:
                     data.append([_p(n.get("name", "")), _p(n.get("gateway_ip", "")), _p(n.get("dhcp_status", "")), _p(detail)])
                 elements.append(_make_table(data, cw_net))
 
-            port_optics = gw.get("port_optics", [])
-            if port_optics:
-                cw_op = [w * 0.12, w * 0.2, w * 0.14, w * 0.14, w * 0.14, w * 0.14, w * 0.12]
-                data = [[_ph("Port"), _ph("Model"), _ph("Serial"), _ph("Part Number"), _ph("Rx (dBm)"), _ph("Tx (dBm)"), _ph("Temp (\u00b0C)")]]
-                for o in port_optics:
-                    data.append([
-                        _p(o.get("port_id", "")),
-                        _p(o.get("xcvr_model", "")),
-                        _p(o.get("xcvr_serial", "")),
-                        _p(o.get("xcvr_part_number", "")),
-                        _p_optics_power(o.get("rx_power"), o.get("rx_power_status", "")),
-                        _p_optics_power(o.get("tx_power"), o.get("tx_power_status", "")),
-                        _p(str(o["temperature"]) if o.get("temperature") is not None else ""),
-                    ])
-                elements.append(_make_table(data, cw_op))
-                elements.append(Paragraph(
-                    "Rx threshold: warn &lt; -20 dBm, fail &lt; -25 dBm &bull; "
-                    "Tx threshold: warn &lt; -8 dBm, fail &lt; -12 dBm",
-                    ParagraphStyle("OpticsLegend", fontSize=6, leading=8, textColor=colors.grey),
-                ))
+            if gw.get("port_optics"):
+                _add_optics_table(elements, gw["port_optics"], w)
 
             elements.append(Spacer(1, 0.3 * cm))
 
@@ -622,20 +627,7 @@ def generate_csv_zip(report) -> bytes:
                     "neighbor_system_name", "neighbor_port_desc", "pairs",
                 ]))
 
-            sw_optics_rows: list[dict] = []
-            for sw in switches:
-                for o in sw.get("port_optics", []):
-                    sw_optics_rows.append({
-                        "switch_name": sw.get("name", ""), "switch_mac": sw.get("mac", ""),
-                        "port_id": o.get("port_id", ""), "media_type": o.get("media_type", ""),
-                        "xcvr_model": o.get("xcvr_model", ""), "xcvr_serial": o.get("xcvr_serial", ""),
-                        "xcvr_part_number": o.get("xcvr_part_number", ""),
-                        "rx_power": o.get("rx_power", ""), "rx_power_status": o.get("rx_power_status", ""),
-                        "tx_power": o.get("tx_power", ""), "tx_power_status": o.get("tx_power_status", ""),
-                        "temperature": o.get("temperature", ""),
-                        "bias_current": o.get("bias_current", ""),
-                        "voltage": o.get("voltage", ""),
-                    })
+            sw_optics_rows = _optics_csv_rows(switches, "switch_name", "switch_mac")
             if sw_optics_rows:
                 zf.writestr("switch_port_optics.csv", _dict_list_to_csv(sw_optics_rows, [
                     "switch_name", "switch_mac", "port_id", "media_type",
@@ -703,20 +695,7 @@ def generate_csv_zip(report) -> bytes:
             if net_rows:
                 zf.writestr("gateway_networks.csv", _dict_list_to_csv(net_rows, ["gateway_name", "network", "gateway_ip", "dhcp_status", "dhcp_pool", "dhcp_relay_servers"]))
 
-            gw_optics_rows: list[dict] = []
-            for gw in gateways:
-                for o in gw.get("port_optics", []):
-                    gw_optics_rows.append({
-                        "gateway_name": gw.get("name", ""), "gateway_mac": gw.get("mac", ""),
-                        "port_id": o.get("port_id", ""), "media_type": o.get("media_type", ""),
-                        "xcvr_model": o.get("xcvr_model", ""), "xcvr_serial": o.get("xcvr_serial", ""),
-                        "xcvr_part_number": o.get("xcvr_part_number", ""),
-                        "rx_power": o.get("rx_power", ""), "rx_power_status": o.get("rx_power_status", ""),
-                        "tx_power": o.get("tx_power", ""), "tx_power_status": o.get("tx_power_status", ""),
-                        "temperature": o.get("temperature", ""),
-                        "bias_current": o.get("bias_current", ""),
-                        "voltage": o.get("voltage", ""),
-                    })
+            gw_optics_rows = _optics_csv_rows(gateways, "gateway_name", "gateway_mac")
             if gw_optics_rows:
                 zf.writestr("gateway_port_optics.csv", _dict_list_to_csv(gw_optics_rows, [
                     "gateway_name", "gateway_mac", "port_id", "media_type",
@@ -754,10 +733,6 @@ def generate_csv_zip(report) -> bytes:
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────
-
-
-def _truncate(text: str, max_len: int) -> str:
-    return text if len(text) <= max_len else text[: max_len - 3] + "..."
 
 
 def _dict_list_to_csv(rows: list[dict], fields: list[str]) -> str:

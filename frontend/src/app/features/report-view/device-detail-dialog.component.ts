@@ -212,6 +212,18 @@ export class DeviceDetailDialogComponent {
     return this.data.device as GatewayResult;
   }
 
+  checksColumns = ['check', 'status', 'value', 'expected'];
+
+  get checkSummary(): { pass: number; fail: number; warn: number; total: number } {
+    const checks = this.data.device.checks ?? [];
+    return {
+      pass: checks.filter((c) => c.status === 'pass').length,
+      fail: checks.filter((c) => c.status === 'fail').length,
+      warn: checks.filter((c) => c.status === 'warn').length,
+      total: checks.length,
+    };
+  }
+
   vcColumns = ['member_id', 'model', 'firmware', 'vc_ports_up', 'status'];
   cableColumns = ['port', 'lldp_neighbor', 'status', 'pairs'];
   lldpColumns = ['port_id', 'neighbor'];
