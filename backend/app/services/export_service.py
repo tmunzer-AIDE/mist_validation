@@ -772,3 +772,254 @@ def _dict_list_to_csv(rows: list[dict], fields: list[str]) -> str:
     for row in rows:
         writer.writerow(row)
     return out.getvalue()
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Org-level exports
+# ══════════════════════════════════════════════════════════════════════════
+
+
+def generate_org_pdf(report) -> bytes:
+    """Generate a PDF report for an org-level validation."""
+    report = _adapt_report(report)
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=1.5 * cm, rightMargin=1.5 * cm,
+        topMargin=2 * cm, bottomMargin=2 * cm,
+    )
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("ReportTitle", parent=styles["Title"], fontSize=18, spaceAfter=12)
+    heading_style = ParagraphStyle("SectionHeading", parent=styles["Heading2"], fontSize=14, spaceAfter=8, spaceBefore=16)
+    normal_style = styles["Normal"]
+
+    elements: list = []
+    result = report.result or {}
+    org_info = result.get("org_info", {})
+    sites = result.get("sites", {})
+    summary = result.get("summary", {})
+
+    # ── Title page ──
+    elements.append(Paragraph("Org Validation Report", title_style))
+    elements.append(Paragraph(f"Organization: {_esc(org_info.get('org_name', ''))}", normal_style))
+    gen_time = report.completed_at or report.created_at
+    if isinstance(gen_time, str):
+        try:
+            gen_time = _dt.datetime.fromisoformat(gen_time.replace("Z", "+00:00"))
+        except Exception:
+            gen_time = None
+    gen_str = gen_time.strftime("%b %d, %Y, %H:%M") if gen_time and hasattr(gen_time, "strftime") else str(gen_time or "")
+    elements.append(Paragraph(f"Generated: {gen_str}", normal_style))
+    elements.append(Spacer(1, 12))
+
+    # Device counts
+    dc = org_info.get("device_counts", {})
+    elements.append(Paragraph(
+        f"Sites: {org_info.get('site_count', 0)} &nbsp; | &nbsp; "
+        f"APs: {dc.get('aps', 0)} &nbsp; | &nbsp; "
+        f"Switches: {dc.get('switches', 0)} &nbsp; | &nbsp; "
+        f"Gateways: {dc.get('gateways', 0)}",
+        normal_style,
+    ))
+    elements.append(Spacer(1, 6))
+
+    # Summary
+    elements.append(Paragraph(
+        f"<font color='green'>Pass: {summary.get('pass', 0)}</font> &nbsp; "
+        f"<font color='red'>Fail: {summary.get('fail', 0)}</font> &nbsp; "
+        f"<font color='#ff9800'>Warn: {summary.get('warn', 0)}</font> &nbsp; "
+        f"<font color='#2196f3'>Info: {summary.get('info', 0)}</font>",
+        normal_style,
+    ))
+    elements.append(Spacer(1, 16))
+
+    # ── Overview table ──
+    elements.append(Paragraph("Site Overview", heading_style))
+    overview_header = [_ph("Site"), _ph("Variables"), _ph("APs"), _ph("Switches"), _ph("Gateways")]
+    overview_data = [overview_header]
+
+    for site_id in sorted(sites.keys(), key=lambda sid: sites[sid].get("site_info", {}).get("site_name", "")):
+        sr = sites[site_id]
+        si = sr.get("site_info", {})
+        s = sr.get("summary", {})
+        ds = si.get("device_summary", {})
+        # Variables status
+        var_checks = sr.get("template_variables", [])
+        missing = sum(1 for v in var_checks if v.get("status") == "fail")
+        var_text = f"{missing} missing" if missing else "OK"
+        var_style = _CELL_RED if missing else _CELL_GREEN
+
+        overview_data.append([
+            _p(si.get("site_name", site_id[:8])),
+            _p(var_text, var_style),
+            _p(f"{ds.get('aps', {}).get('failed', 0)}F / {ds.get('aps', {}).get('total', 0)}"),
+            _p(f"{ds.get('switches', {}).get('failed', 0)}F / {ds.get('switches', {}).get('total', 0)}"),
+            _p(f"{ds.get('gateways', {}).get('failed', 0)}F / {ds.get('gateways', {}).get('total', 0)}"),
+        ])
+
+    if len(overview_data) > 1:
+        col_widths = [_PAGE_WIDTH * w for w in (0.35, 0.15, 0.15, 0.15, 0.2)]
+        t = Table(overview_data, colWidths=col_widths, repeatRows=1)
+        t.setStyle(TableStyle(_BASE_TABLE_STYLE))
+        elements.append(t)
+
+    elements.append(Spacer(1, 20))
+
+    doc.build(elements)
+    return buf.getvalue()
+
+
+def generate_org_csv_zip(report) -> bytes:
+    """Generate a ZIP file containing CSV exports for an org-level report."""
+    report = _adapt_report(report)
+
+    buf = io.BytesIO()
+    result = report.result or {}
+    sites = result.get("sites", {})
+    org_info = result.get("org_info", {})
+
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        # Overview CSV
+        overview_rows: list[dict] = []
+        for site_id in sorted(sites.keys(), key=lambda sid: sites[sid].get("site_info", {}).get("site_name", "")):
+            sr = sites[site_id]
+            si = sr.get("site_info", {})
+            s = sr.get("summary", {})
+            ds = si.get("device_summary", {})
+            var_checks = sr.get("template_variables", [])
+            missing_vars = sum(1 for v in var_checks if v.get("status") == "fail")
+            overview_rows.append({
+                "site_name": si.get("site_name", ""),
+                "site_id": site_id,
+                "variables_missing": missing_vars,
+                "ap_total": ds.get("aps", {}).get("total", 0),
+                "ap_failed": ds.get("aps", {}).get("failed", 0),
+                "sw_total": ds.get("switches", {}).get("total", 0),
+                "sw_failed": ds.get("switches", {}).get("failed", 0),
+                "gw_total": ds.get("gateways", {}).get("total", 0),
+                "gw_failed": ds.get("gateways", {}).get("failed", 0),
+                "pass": s.get("pass", 0),
+                "fail": s.get("fail", 0),
+                "warn": s.get("warn", 0),
+                "info": s.get("info", 0),
+            })
+        if overview_rows:
+            zf.writestr("overview.csv", _dict_list_to_csv(overview_rows, [
+                "site_name", "site_id", "variables_missing",
+                "ap_total", "ap_failed", "sw_total", "sw_failed",
+                "gw_total", "gw_failed", "pass", "fail", "warn", "info",
+            ]))
+
+        # Template variables (all sites)
+        var_rows: list[dict] = []
+        for site_id, sr in sites.items():
+            site_name = sr.get("site_info", {}).get("site_name", "")
+            for v in sr.get("template_variables", []):
+                var_rows.append({"site_name": site_name, **v})
+        if var_rows:
+            zf.writestr("template_variables.csv", _dict_list_to_csv(var_rows, [
+                "site_name", "template_type", "template_name", "variable", "value", "defined", "status",
+            ]))
+
+        # APs (all sites)
+        ap_rows: list[dict] = []
+        for site_id, sr in sites.items():
+            site_name = sr.get("site_info", {}).get("site_name", "")
+            for ap in sr.get("aps", []):
+                checks = _checks_values(ap)
+                checks_full = _checks_map(ap)
+                fw_check = checks_full.get("firmware_version", {})
+                lldp = ap.get("lldp_neighbor", {})
+                ap_rows.append({
+                    "site_name": site_name,
+                    "name": ap.get("name", ""), "device_id": ap.get("device_id", ""),
+                    "mac": ap.get("mac", ""), "model": ap.get("model", ""),
+                    "connection_status": checks.get("connection_status", ""),
+                    "firmware_version": checks.get("firmware_version", ""),
+                    "firmware_status": fw_check.get("status", ""),
+                    "firmware_recommended": fw_check.get("expected", ""),
+                    "eth0_port_speed": checks.get("eth0_port_speed", ""),
+                    "power_constrained": checks.get("power_constrained", ""),
+                    "config_status": checks.get("config_status", ""),
+                    "lldp_system_name": lldp.get("system_name", ""),
+                    "lldp_port_desc": lldp.get("port_desc", ""),
+                })
+        if ap_rows:
+            zf.writestr("aps.csv", _dict_list_to_csv(ap_rows, [
+                "site_name", "name", "device_id", "mac", "model", "connection_status",
+                "firmware_version", "firmware_status", "firmware_recommended",
+                "eth0_port_speed", "power_constrained", "config_status", "lldp_system_name", "lldp_port_desc",
+            ]))
+
+        # Switches (all sites)
+        sw_rows: list[dict] = []
+        for site_id, sr in sites.items():
+            site_name = sr.get("site_info", {}).get("site_name", "")
+            for sw in sr.get("switches", []):
+                checks = _checks_values(sw)
+                checks_full = _checks_map(sw)
+                fw_check = checks_full.get("firmware_version", {})
+                sw_rows.append({
+                    "site_name": site_name,
+                    "name": sw.get("name", ""), "device_id": sw.get("device_id", ""),
+                    "mac": sw.get("mac", ""), "model": sw.get("model", ""),
+                    "connection_status": checks.get("connection_status", ""),
+                    "firmware_version": checks.get("firmware_version", ""),
+                    "firmware_status": fw_check.get("status", ""),
+                    "firmware_recommended": fw_check.get("expected", ""),
+                    "config_status": checks.get("config_status", ""),
+                })
+        if sw_rows:
+            zf.writestr("switches.csv", _dict_list_to_csv(sw_rows, [
+                "site_name", "name", "device_id", "mac", "model", "connection_status",
+                "firmware_version", "firmware_status", "firmware_recommended", "config_status",
+            ]))
+
+        # Gateways (all sites)
+        gw_rows: list[dict] = []
+        for site_id, sr in sites.items():
+            site_name = sr.get("site_info", {}).get("site_name", "")
+            for gw in sr.get("gateways", []):
+                checks = _checks_values(gw)
+                checks_full = _checks_map(gw)
+                fw_check = checks_full.get("firmware_version", {})
+                gw_rows.append({
+                    "site_name": site_name,
+                    "name": gw.get("name", ""), "device_id": gw.get("device_id", ""),
+                    "mac": gw.get("mac", ""), "model": gw.get("model", ""),
+                    "connection_status": checks.get("connection_status", ""),
+                    "firmware_version": checks.get("firmware_version", ""),
+                    "firmware_status": fw_check.get("status", ""),
+                    "firmware_recommended": fw_check.get("expected", ""),
+                    "config_status": checks.get("config_status", ""),
+                    "wan_port_status": checks.get("wan_port_status", ""),
+                    "lan_port_status": checks.get("lan_port_status", ""),
+                })
+        if gw_rows:
+            zf.writestr("gateways.csv", _dict_list_to_csv(gw_rows, [
+                "site_name", "name", "device_id", "mac", "model", "connection_status",
+                "firmware_version", "firmware_status", "firmware_recommended",
+                "config_status", "wan_port_status", "lan_port_status",
+            ]))
+
+        # Config errors (all sites)
+        ce_rows: list[dict] = []
+        for site_id, sr in sites.items():
+            site_name = sr.get("site_info", {}).get("site_name", "")
+            for dtype, dkey in [("switch", "switches"), ("gateway", "gateways")]:
+                for dev in sr.get(dkey, []):
+                    for err in dev.get("config_errors", []):
+                        ce_rows.append({
+                            "site_name": site_name,
+                            "device_type": dtype,
+                            "device_name": dev.get("name", ""),
+                            "device_mac": dev.get("mac", ""),
+                            "error": err,
+                        })
+        if ce_rows:
+            zf.writestr("config_errors.csv", _dict_list_to_csv(ce_rows, [
+                "site_name", "device_type", "device_name", "device_mac", "error",
+            ]))
+
+    return buf.getvalue()

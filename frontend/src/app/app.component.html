@@ -8,16 +8,22 @@
       [selectedOrg]="selectedOrg()"
       (orgSelected)="selectedOrg.set($event)"
       (reportStarted)="onReportStarted($event)"
-      (showReference)="appState.set('validation_reference')"
+      (showReference)="pushState('validation_reference')"
     />
   }
   @case ('validation_reference') {
-    <app-validation-reference (back)="appState.set('site_selector')" />
+    <app-validation-reference (back)="showSiteSelector()" />
   }
   @case ('report') {
     <app-report-view
       [jobId]="activeJobId()!"
-      (back)="appState.set('site_selector')"
+      (back)="showSiteSelector()"
+    />
+  }
+  @case ('org_report') {
+    <app-org-report-view
+      [jobId]="activeJobId()!"
+      (back)="showSiteSelector()"
     />
   }
 }

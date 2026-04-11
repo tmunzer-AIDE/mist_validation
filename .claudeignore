@@ -1,0 +1,41 @@
+# Build/package artifacts
+node_modules/
+dist/
+build/
+.angular/
+
+# Python runtime/cache artifacts
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+uv.lock
+
+# Coverage/test artifacts
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Logs/temp files
+*.log
+*.tmp
+*.bak
+*.swp
+
+# Editor/AI/workspace artifacts
+.claude/
+.vscode/
+.idea/
+.worktrees/
+.superpowers/
+
+# Project-specific generated/runtime data
+skills/repos/
+docs/superpowers/
+backend/app/frontend/
+openapi.yaml

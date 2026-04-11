@@ -72,6 +72,7 @@ interface ReportResponse {
   org_id: string;
   site_id: string;
   site_name: string;
+  scope: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
   progress: { overall_completed: number; overall_total: number; steps: ProgressStep[] };
   result: ReportResult | null;
@@ -123,8 +124,8 @@ function worstStatus(items: { status: string }[]): string {
   styleUrl: './report-view.component.scss',
 })
 export class ReportViewComponent implements OnInit, OnDestroy {
-  jobId = input.required<string>();
-
+  jobId = input<string | null>(null);
+  reportData = input<ReportResponse | null>(null);
 
   @Output() back = new EventEmitter<void>();
 
@@ -265,13 +266,22 @@ export class ReportViewComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    const data = this.reportData();
+    if (data) {
+      // Dual-mode: report data provided directly (e.g., from org report drill-down)
+      this.report.set(data);
+      return;
+    }
     this.loadReport(true);
     this.subscribeWs();
   }
 
   ngOnDestroy(): void {
-    const channel = `report:${this.jobId()}`;
-    this.ws.unsubscribe(channel);
+    const jid = this.jobId();
+    if (jid) {
+      const channel = `report:${jid}`;
+      this.ws.unsubscribe(channel);
+    }
     this.wsSubscription?.unsubscribe();
     this.stopPolling();
   }
@@ -295,7 +305,9 @@ export class ReportViewComponent implements OnInit, OnDestroy {
   }
 
   loadReport(initial = false): void {
-    this.api.get<ReportResponse>(`reports/${this.jobId()}`).subscribe({
+    const jid = this.jobId();
+    if (!jid) return;
+    this.api.get<ReportResponse>(`reports/${jid}`).subscribe({
       next: (r) => {
         this.report.set(r);
         if (r.status === 'completed' || r.status === 'failed') {
@@ -309,7 +321,9 @@ export class ReportViewComponent implements OnInit, OnDestroy {
   }
 
   private subscribeWs(): void {
-    const channel = `report:${this.jobId()}`;
+    const jid = this.jobId();
+    if (!jid) return;
+    const channel = `report:${jid}`;
     this.ws.subscribe(channel);
     this.wsSubscription = this.ws.channel$(channel).subscribe((msg) => {
       const type = msg['type'] as string;
@@ -374,12 +388,16 @@ export class ReportViewComponent implements OnInit, OnDestroy {
   }
 
   exportPdf(): void {
+    const jid = this.jobId();
+    if (!jid) return;
     const siteName = this.report()?.site_name ?? 'report';
-    this.exportFile(`reports/${this.jobId()}/export/pdf`, `${siteName}-validation.pdf`);
+    this.exportFile(`reports/${jid}/export/pdf`, `${siteName}-validation.pdf`);
   }
 
   exportCsv(): void {
+    const jid = this.jobId();
+    if (!jid) return;
     const siteName = this.report()?.site_name ?? 'report';
-    this.exportFile(`reports/${this.jobId()}/export/csv`, `${siteName}-validation.zip`);
+    this.exportFile(`reports/${jid}/export/csv`, `${siteName}-validation.zip`);
   }
 }

@@ -1,0 +1,366 @@
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  .mockup-page {
+    max-width: 1400px;
+    margin: 0 auto;
+    font-family: Roboto, 'Helvetica Neue', sans-serif;
+    color: #444;
+    background: #ececec;
+    padding: 32px 24px;
+    min-height: 100vh;
+  }
+
+  /* Topbar */
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 32px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #e0e0e0;
+  }
+  .back-btn {
+    width: 40px; height: 40px; border-radius: 50%;
+    border: none; background: transparent; cursor: pointer;
+    font-size: 20px; color: #444; display: flex; align-items: center; justify-content: center;
+  }
+  .topbar-title { font-size: 24px; font-weight: 600; flex: 1; letter-spacing: -0.02em; }
+  .topbar-meta { font-size: 13px; color: #6a6a6a; font-family: 'Roboto Mono', monospace; }
+  .status-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;
+    background: #f1f8e5; color: #4a8d00;
+  }
+
+  /* Summary cards */
+  .summary-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .card {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 5px;
+    padding: 20px 24px;
+  }
+  .card-title {
+    font-size: 14px; font-weight: 600; color: #6a6a6a;
+    margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+
+  /* Org info grid */
+  .info-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  .info-label { font-size: 11px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.06em; }
+  .info-value { font-size: 14px; color: #444; margin-top: 2px; }
+
+  /* Status pills row */
+  .status-pills {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .status-pill .count { font-size: 24px; font-weight: 700; }
+  .status-pill .label { font-size: 12px; font-weight: 500; }
+  .pill-fail { background: #f9e7e9; color: #960d0d; }
+  .pill-warn { background: #fff8e1; color: #d97706; }
+  .pill-pass { background: #f1f8e5; color: #4a8d00; }
+  .pill-info { background: #e2f6fc; color: #015c95; }
+
+  /* Device summary */
+  .device-summary {
+    display: flex;
+    gap: 24px;
+  }
+  .device-type {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .device-type .icon { font-size: 20px; color: #6a6a6a; }
+  .device-type .num { font-size: 20px; font-weight: 700; color: #444; }
+  .device-type .lbl { font-size: 13px; color: #6a6a6a; }
+
+  /* Filter bar */
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .section-title {
+    font-size: 16px; font-weight: 600; flex: 1;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .filter-select {
+    padding: 8px 12px; border: 1px solid #e0e0e0; border-radius: 6px;
+    font-size: 13px; color: #444; background: #fff; min-width: 160px;
+  }
+  .search-input {
+    padding: 8px 12px; border: 1px solid #e0e0e0; border-radius: 6px;
+    font-size: 13px; color: #444; background: #fff; width: 220px;
+  }
+
+  /* Sites table */
+  .sites-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 5px;
+    overflow: hidden;
+    font-size: 13px;
+  }
+  .sites-table th {
+    background: #f5f5f5;
+    padding: 12px 16px;
+    text-align: left;
+    font-weight: 600;
+    color: #6a6a6a;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid #e0e0e0;
+    cursor: pointer;
+    user-select: none;
+  }
+  .sites-table th:hover { background: #eee; }
+  .sites-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid #eee;
+    vertical-align: middle;
+  }
+  .sites-table tr { cursor: pointer; }
+  .sites-table tr:hover td { background: rgba(1,92,149,0.04); }
+
+  .site-name { font-weight: 600; color: #015c95; }
+
+  /* Mini status badges in table */
+  .mini-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-right: 4px;
+  }
+  .mini-fail { background: #f9e7e9; color: #960d0d; }
+  .mini-warn { background: #fff8e1; color: #d97706; }
+  .mini-pass { background: #f1f8e5; color: #4a8d00; }
+  .mini-info { background: #e2f6fc; color: #015c95; }
+
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .dot-fail { background: #960d0d; }
+  .dot-warn { background: #d97706; }
+  .dot-pass { background: #4a8d00; }
+
+  .sort-arrow { font-size: 10px; margin-left: 4px; color: #999; }
+
+  .click-hint {
+    text-align: center; padding: 12px; color: #999; font-size: 12px; font-style: italic;
+  }
+</style>
+
+<h2>Org Report Overview — Mockup</h2>
+<p class="subtitle">This is how the org-level report overview page would look</p>
+
+<div class="mockup">
+  <div class="mockup-header">Org Report — Completed View</div>
+  <div class="mockup-body" style="padding: 0;">
+    <div class="mockup-page">
+
+      <!-- Topbar -->
+      <div class="topbar">
+        <button class="back-btn">←</button>
+        <div class="topbar-title">Acme Corporation</div>
+        <div class="topbar-meta">Apr 11, 2026 14:32</div>
+        <span class="status-badge">✓ Completed</span>
+      </div>
+
+      <!-- Summary row -->
+      <div class="summary-row">
+        <!-- Org Info -->
+        <div class="card">
+          <div class="card-title">Organization Info</div>
+          <div class="info-grid">
+            <div>
+              <div class="info-label">Org Name</div>
+              <div class="info-value">Acme Corporation</div>
+            </div>
+            <div>
+              <div class="info-label">Sites</div>
+              <div class="info-value">147</div>
+            </div>
+            <div>
+              <div class="info-label">Total Devices</div>
+              <div class="info-value">2,841</div>
+            </div>
+          </div>
+          <div style="margin-top: 16px;">
+            <div class="device-summary">
+              <div class="device-type">
+                <span class="num">1,420</span>
+                <span class="lbl">APs</span>
+              </div>
+              <div class="device-type">
+                <span class="num">980</span>
+                <span class="lbl">Switches</span>
+              </div>
+              <div class="device-type">
+                <span class="num">441</span>
+                <span class="lbl">Gateways</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Site Status Summary -->
+        <div class="card">
+          <div class="card-title">Site Status Summary</div>
+          <div class="status-pills">
+            <div class="status-pill pill-fail">
+              <span class="count">12</span>
+              <span class="label">Sites with<br>failures</span>
+            </div>
+            <div class="status-pill pill-warn">
+              <span class="count">34</span>
+              <span class="label">Sites with<br>warnings</span>
+            </div>
+            <div class="status-pill pill-pass">
+              <span class="count">98</span>
+              <span class="label">Sites<br>passing</span>
+            </div>
+            <div class="status-pill pill-info">
+              <span class="count">3</span>
+              <span class="label">Sites<br>info only</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Filter bar -->
+      <div class="filter-bar">
+        <div class="section-title">Sites</div>
+        <select class="filter-select">
+          <option selected>Show: Failed sites</option>
+          <option>Show: Warning sites</option>
+          <option>Show: Passing sites</option>
+          <option>Show: Info sites</option>
+          <option>Show: All sites</option>
+        </select>
+        <input class="search-input" placeholder="Search sites..." />
+      </div>
+
+      <!-- Sites table -->
+      <table class="sites-table">
+        <thead>
+          <tr>
+            <th>Site Name <span class="sort-arrow">▲</span></th>
+            <th>Variables</th>
+            <th>APs</th>
+            <th>Switches</th>
+            <th>Gateways</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="site-name">NYC - HQ Tower 1</span></td>
+            <td><span class="mini-badge mini-fail">2 missing</span></td>
+            <td>
+              <span class="mini-badge mini-fail">3</span>
+              <span class="mini-badge mini-warn">1</span>
+              <span class="mini-badge mini-pass">12</span>
+            </td>
+            <td>
+              <span class="mini-badge mini-fail">1</span>
+              <span class="mini-badge mini-pass">6</span>
+            </td>
+            <td>
+              <span class="mini-badge mini-pass">2</span>
+            </td>
+          </tr>
+          <tr>
+            <td><span class="site-name">London - Canary Wharf</span></td>
+            <td><span class="mini-badge mini-pass">OK</span></td>
+            <td>
+              <span class="mini-badge mini-fail">1</span>
+              <span class="mini-badge mini-pass">8</span>
+            </td>
+            <td>
+              <span class="mini-badge mini-fail">2</span>
+              <span class="mini-badge mini-warn">1</span>
+              <span class="mini-badge mini-pass">4</span>
+            </td>
+            <td>
+              <span class="mini-badge mini-warn">1</span>
+              <span class="mini-badge mini-pass">1</span>
+            </td>
+          </tr>
+          <tr>
+            <td><span class="site-name">Tokyo - Shibuya Office</span></td>
+            <td><span class="mini-badge mini-fail">1 missing</span></td>
+            <td>
+              <span class="mini-badge mini-pass">6</span>
+            </td>
+            <td>
+              <span class="mini-badge mini-fail">1</span>
+              <span class="mini-badge mini-pass">3</span>
+            </td>
+            <td>
+              <span class="mini-badge mini-pass">1</span>
+            </td>
+          </tr>
+          <tr>
+            <td><span class="site-name">Berlin - Mitte Campus</span></td>
+            <td><span class="mini-badge mini-warn">1 empty</span></td>
+            <td>
+              <span class="mini-badge mini-fail">2</span>
+              <span class="mini-badge mini-warn">3</span>
+              <span class="mini-badge mini-pass">15</span>
+            </td>
+            <td>
+              <span class="mini-badge mini-pass">8</span>
+            </td>
+            <td>
+              <span class="mini-badge mini-fail">1</span>
+              <span class="mini-badge mini-pass">1</span>
+            </td>
+          </tr>
+          <tr>
+            <td><span class="site-name">SF - Market Street</span></td>
+            <td><span class="mini-badge mini-pass">OK</span></td>
+            <td>
+              <span class="mini-badge mini-fail">1</span>
+              <span class="mini-badge mini-pass">4</span>
+            </td>
+            <td>
+              <span class="mini-badge mini-pass">3</span>
+            </td>
+            <td>
+              <span class="mini-badge mini-pass">1</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="click-hint">Click a site row to view the full site report →</div>
+
+    </div>
+  </div>
+</div>

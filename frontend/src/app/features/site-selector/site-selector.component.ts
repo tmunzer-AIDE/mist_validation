@@ -16,6 +16,7 @@ import { MatAutocompleteModule } from '@angular/material/autocomplete';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -40,10 +41,22 @@ interface ReportRow {
   id: string;
   org_name: string;
   site_name: string;
+  scope: string;
   status: string;
   created_at: string;
   include_cable_tests: boolean;
   include_config_errors: boolean;
+}
+
+interface BudgetInfo {
+  allowed: boolean;
+  reason: string;
+  available: number;
+  estimated: number;
+  config_errors_allowed: boolean;
+  config_errors_reason: string;
+  site_count: number;
+  device_counts: { ap: number; switch: number; gateway: number };
 }
 
 interface SitesResponse {
@@ -73,6 +86,7 @@ interface StartReportResponse {
     MatInputModule,
     MatAutocompleteModule,
     MatButtonModule,
+    MatButtonToggleModule,
     MatCheckboxModule,
     MatDialogModule,
     MatTableModule,
@@ -89,7 +103,7 @@ export class SiteSelectorComponent implements OnInit {
   selectedOrg = input<{ id: string; name: string; role?: string } | null>(null);
 
   @Output() orgSelected = new EventEmitter<{ id: string; name: string; role?: string }>();
-  @Output() reportStarted = new EventEmitter<string>();
+  @Output() reportStarted = new EventEmitter<{ id: string; scope: string }>();
   @Output() showReference = new EventEmitter<void>();
 
   private api = inject(ApiService);
@@ -113,10 +127,14 @@ export class SiteSelectorComponent implements OnInit {
   tdrGroupName = signal('');
   tdrGroupExists = signal(true);
 
+  scope = signal<'site' | 'org'>('site');
+  orgBudget = signal<BudgetInfo | null>(null);
+  budgetLoading = signal(false);
+
   generating = signal(false);
   startError = signal('');
 
-  reportColumns = ['org_name', 'site_name', 'status', 'created_at', 'action'];
+  reportColumns = ['org_name', 'site_name', 'scope', 'status', 'created_at', 'action'];
 
   private orgQuery = toSignal(
     this.orgSearchCtrl.valueChanges.pipe(debounceTime(0), distinctUntilChanged()),
@@ -140,9 +158,13 @@ export class SiteSelectorComponent implements OnInit {
     return this.allSites().filter((s) => s.name.toLowerCase().includes(q));
   });
 
-  canGenerate = computed(
-    () => !!this.selectedSite() && (!!(this.currentOrg() || this.authInfo().orgs.length === 1)),
-  );
+  canGenerate = computed(() => {
+    const hasOrg = !!(this.currentOrg() || this.authInfo().orgs.length === 1);
+    if (this.scope() === 'org') {
+      return hasOrg && !this.budgetLoading() && (this.orgBudget()?.allowed ?? false);
+    }
+    return !!this.selectedSite() && hasOrg;
+  });
 
   canWriteOrg = computed(() => {
     const org =
@@ -204,6 +226,10 @@ export class SiteSelectorComponent implements OnInit {
     const initialOrg = this.selectedOrg() ?? (this.authInfo().orgs.length === 1 ? this.authInfo().orgs[0] : null);
     if (initialOrg) {
       this.currentOrg.set(initialOrg);
+      // Restore the org name in the autocomplete field so it's visually consistent
+      if (this.authInfo().orgs.length > 1) {
+        this.orgSearchCtrl.setValue(initialOrg as any);
+      }
       this.loadSites(initialOrg);
     }
     this.loadRecentReports();
@@ -254,6 +280,9 @@ export class SiteSelectorComponent implements OnInit {
     this.currentOrg.set(org);
     this.orgSelected.emit(org);
     this.loadSites(org);
+    if (this.scope() === 'org') {
+      this.fetchBudget();
+    }
   }
 
   displayOrg(org: { id: string; name: string; role?: string } | null): string {
@@ -264,25 +293,78 @@ export class SiteSelectorComponent implements OnInit {
     return site?.name ?? '';
   }
 
-  generateReport(): void {
-    const site = this.selectedSite();
+  onScopeChange(newScope: 'site' | 'org'): void {
+    this.scope.set(newScope);
+    if (newScope === 'org') {
+      this.cableTestsCtrl.setValue(false);
+      this.cableTestsCtrl.disable();
+      // Only fetch budget if an org is already selected
+      const org = this.currentOrg() ?? (this.authInfo().orgs.length === 1 ? this.authInfo().orgs[0] : null);
+      if (org) {
+        this.fetchBudget();
+      }
+    } else {
+      this.orgBudget.set(null);
+      // Re-enable cable tests based on site selection
+      if (this.cableTestsAllowed()) {
+        this.cableTestsCtrl.enable();
+      }
+    }
+  }
+
+  fetchBudget(): void {
     const auth = this.authInfo();
     const org = this.currentOrg() ?? (auth.orgs.length === 1 ? auth.orgs[0] : null);
+    if (!org) return;
 
-    if (!site || !org) return;
+    this.budgetLoading.set(true);
+    this.api
+      .get<BudgetInfo>(`reports/budget?org_id=${org.id}&include_config_errors=${this.configErrorsCtrl.value}`)
+      .subscribe({
+        next: (budget) => {
+          this.orgBudget.set(budget);
+          this.budgetLoading.set(false);
+          if (!budget.config_errors_allowed) {
+            this.configErrorsCtrl.setValue(false);
+            this.configErrorsCtrl.disable();
+          } else {
+            this.configErrorsCtrl.enable();
+          }
+        },
+        error: () => {
+          this.budgetLoading.set(false);
+          this.orgBudget.set(null);
+        },
+      });
+  }
+
+  generateReport(): void {
+    const auth = this.authInfo();
+    const org = this.currentOrg() ?? (auth.orgs.length === 1 ? auth.orgs[0] : null);
+    if (!org) return;
+
+    const isOrg = this.scope() === 'org';
+    if (!isOrg && !this.selectedSite()) return;
 
     this.generating.set(true);
     this.startError.set('');
 
+    const body: Record<string, unknown> = {
+      org_id: org.id,
+      scope: this.scope(),
+      include_config_errors: this.configErrorsCtrl.value,
+    };
+    if (!isOrg) {
+      body['site_id'] = this.selectedSite()!.id;
+      body['include_cable_tests'] = this.cableTestsCtrl.value;
+    }
+
     this.api
-      .post<StartReportResponse>(
-        'reports',
-        { site_id: site.id, org_id: org.id, include_cable_tests: this.cableTestsCtrl.value, include_config_errors: this.configErrorsCtrl.value },
-      )
+      .post<StartReportResponse>('reports', body)
       .subscribe({
         next: (res) => {
           this.generating.set(false);
-          this.reportStarted.emit(res.id);
+          this.reportStarted.emit({ id: res.id, scope: this.scope() });
         },
         error: (err) => {
           this.generating.set(false);
@@ -308,7 +390,7 @@ export class SiteSelectorComponent implements OnInit {
     });
   }
 
-  viewReport(id: string): void {
-    this.reportStarted.emit(id);
+  viewReport(row: ReportRow): void {
+    this.reportStarted.emit({ id: row.id, scope: row.scope || 'site' });
   }
 }

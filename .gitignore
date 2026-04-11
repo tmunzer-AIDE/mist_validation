@@ -23,3 +23,20 @@ backend/app/frontend/index.html
 # OS
 .DS_Store
 Thumbs.db
+
+# Build/package artifacts
+node_modules/
+dist/
+build/
+.angular/
+
+# Python runtime/cache artifacts
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+uv.lock

@@ -34,13 +34,31 @@ from mistapi.api.v1.orgs import (
     sitetemplates as org_sitetemplates,
 )
 from mistapi.api.v1.orgs import (
+    templates as org_templates_api,
+)
+from mistapi.api.v1.orgs import (
     devices as org_devices,
 )
 from mistapi.api.v1.orgs import (
     ssr as org_ssr,
 )
 from mistapi.api.v1.orgs import (
+    inventory as org_inventory,
+)
+from mistapi.api.v1.orgs import (
     setting as org_setting,
+)
+from mistapi.api.v1.orgs import (
+    sites as org_sites,
+)
+from mistapi.api.v1.orgs import (
+    stats as org_stats,
+)
+from mistapi.api.v1.orgs import (
+    wlans as org_wlans,
+)
+from mistapi.api.v1.self import (
+    usage as self_usage,
 )
 from mistapi.api.v1.sites import (
     devices,
@@ -80,11 +98,12 @@ _STEPS = [
 class _ProgressTracker:
     """Manages structured step-based progress and broadcasts via callback."""
 
-    def __init__(self, report_id: str, progress_callback) -> None:
+    def __init__(self, report_id: str, progress_callback, steps: list[tuple[str, str]] | None = None) -> None:
         self.report_id = report_id
         self._callback = progress_callback
+        step_defs = steps or _STEPS
         self.steps: dict[str, dict] = {
-            sid: {"id": sid, "label": label, "status": "pending", "message": ""} for sid, label in _STEPS
+            sid: {"id": sid, "label": label, "status": "pending", "message": ""} for sid, label in step_defs
         }
         self.overall_completed = 0
         self.overall_total = 0  # 0 = discovery phase (indeterminate)
@@ -178,8 +197,8 @@ async def run_post_deployment_validation(
             mistapi.arun(org_setting.getOrgSettings, session, mist.org_id),
         )
         site_settings = site_setting_resp.data if site_setting_resp.status_code == 200 else {}
-        site_vars = site_settings.get("vars", {})
-        site_auto_upgrade = site_settings.get("auto_upgrade", {})
+        site_vars = site_settings.get("vars") or {}
+        site_auto_upgrade = site_settings.get("auto_upgrade") or {}
         org_settings = org_setting_resp.data if org_setting_resp.status_code == 200 else {}
 
         site_data = await mist.get_site(site_id)
@@ -282,9 +301,9 @@ async def run_post_deployment_validation(
         fw_versions = await _fetch_firmware_versions(session, mist.org_id, ap_models, switch_models, srx_models, ssr_macs)
 
         # Override recommended firmware with auto_upgrade settings.
-        # APs: site auto_upgrade takes priority over org; switches/SRX: org only.
-        effective_ap_upgrade = site_auto_upgrade if site_auto_upgrade.get("enabled") else org_settings.get("auto_upgrade", {})
-        _apply_ap_auto_upgrade(fw_versions, effective_ap_upgrade)
+        # 3-tier: baseline → org override → site override (applied in sequence).
+        _apply_ap_auto_upgrade(fw_versions, org_settings.get("auto_upgrade", {}))
+        _apply_ap_auto_upgrade(fw_versions, site_auto_upgrade)
         _apply_junos_auto_upgrade(fw_versions, "switch", org_settings.get("switch", {}).get("auto_upgrade", {}))
         _apply_junos_auto_upgrade(fw_versions, "gateway", org_settings.get("juniper_srx", {}).get("auto_upgrade", {}))
 
@@ -836,7 +855,12 @@ def _validate_template_variables(
         if not isinstance(w, dict):
             continue
         wlan_name = w.get("ssid", w.get("name", "wlan"))
-        for var_name in sorted(_extract_jinja2_vars(w)):
+        # Strip smsMessageFormat — contains Mist built-in vars ({{code}}, {{duration}})
+        wlan_to_scan = w
+        portal = w.get("portal")
+        if isinstance(portal, dict) and "smsMessageFormat" in portal:
+            wlan_to_scan = {**w, "portal": {k: v for k, v in portal.items() if k != "smsMessageFormat"}}
+        for var_name in sorted(_extract_jinja2_vars(wlan_to_scan)):
             root_var = var_name.split(".")[0]
             defined = root_var in var_keys
             results.append(
@@ -2203,3 +2227,677 @@ def _compute_summary(result: dict) -> dict:
                     counts[s] += 1
 
     return counts
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Org-level validation
+# ══════════════════════════════════════════════════════════════════════════
+
+_ORG_STEPS = [
+    ("preflight", "Pre-flight Check"),
+    ("org_data", "Organization Data"),
+    ("device_stats", "Device Statistics"),
+    ("port_stats", "Port Statistics"),
+    ("firmware", "Firmware Versions"),
+    ("device_events", "Device Events"),
+    ("variables", "Template Variables"),
+    ("ap_validation", "AP Validation"),
+    ("sw_validation", "Switch Validation"),
+    ("gw_validation", "Gateway Validation"),
+    ("config_errors", "Config Command Errors"),
+]
+
+
+async def _paginate_org(api_func, session: APISession, org_id: str, limit: int = 1000, **kwargs) -> list:
+    """Fetch all pages from a paginated org-level API endpoint."""
+    all_results: list = []
+    page = 1
+    resp = await mistapi.arun(api_func, session, org_id, limit=limit, **kwargs)
+    if resp.status_code == 200:
+        all_results = mistapi.get_all(session, resp)
+    else:
+        logger.warning("org_paginate_failed func=%s page=%d status=%d", api_func.__name__, page, resp.status_code)
+    return all_results
+
+
+async def check_org_api_budget(
+    session: APISession, org_id: str, include_config_errors: bool = False,
+) -> dict:
+    """Pre-flight check: estimate API call budget for an org-level report."""
+    try:
+        usage_resp, inv_resp, sites_resp = await asyncio.gather(
+            mistapi.arun(self_usage.getSelfApiUsage, session),
+            mistapi.arun(org_inventory.countOrgInventory, session, org_id, distinct="type"),
+            mistapi.arun(org_sites.countOrgSites, session, org_id, distinct="id"),
+        )
+    except Exception as e:
+        logger.warning("budget_check_failed error=%s", str(e))
+        return {
+            "allowed": False, "reason": f"Failed to check API budget: {e}",
+            "available": 0, "estimated": 0,
+            "config_errors_allowed": False, "config_errors_reason": "Budget check failed",
+            "site_count": 0, "device_counts": {},
+        }
+
+    # Parse API usage
+    requests_used = 0
+    request_limit = 5000
+    if usage_resp.status_code == 200 and isinstance(usage_resp.data, dict):
+        requests_used = usage_resp.data.get("requests", 0)
+        request_limit = usage_resp.data.get("request_limit", 5000)
+    available = request_limit - requests_used
+
+    # Parse device counts
+    device_counts = {"ap": 0, "switch": 0, "gateway": 0}
+    total_devices = 0
+    if inv_resp.status_code == 200 and isinstance(inv_resp.data, dict):
+        for item in inv_resp.data.get("results", []):
+            if isinstance(item, dict):
+                dtype = item.get("type", "")
+                count = item.get("count", 0)
+                if dtype in device_counts:
+                    device_counts[dtype] = count
+                    total_devices += count
+
+    # Parse site count
+    site_count = 0
+    if sites_resp.status_code == 200 and isinstance(sites_resp.data, dict):
+        site_count = sites_resp.data.get("total", 0)
+
+    from math import ceil
+    base_calls = 20
+    pagination = ceil(total_devices / 1000) * 5
+    site_settings_calls = site_count                      # getSiteSetting × every site
+    assigned_template_calls = min(site_count * 4, 100)   # RF/network/gateway/site templates, mostly shared
+    per_site_gw = int(site_count * 0.5) * 2  # rough estimate: 50% of sites have gateways
+    config_error_calls = (device_counts["switch"] + device_counts["gateway"]) if include_config_errors else 0
+
+    estimated_base = base_calls + pagination + site_settings_calls + assigned_template_calls + per_site_gw
+    estimated_total = estimated_base + config_error_calls
+    required = int(estimated_total * 1.15)
+
+    allowed = required <= available
+
+    # Check if config errors alone would bust the budget
+    config_errors_allowed = True
+    config_errors_reason = ""
+    if include_config_errors:
+        required_with_ce = int((estimated_base + config_error_calls) * 1.15)
+        required_without_ce = int(estimated_base * 1.15)
+        if required_with_ce > available and required_without_ce <= available:
+            config_errors_allowed = False
+            config_errors_reason = (
+                f"Config errors need ~{config_error_calls} extra API calls. "
+                f"Only {available} calls available (need {required_with_ce})."
+            )
+        elif required_with_ce > available:
+            config_errors_allowed = False
+            config_errors_reason = "Insufficient API budget for any org report."
+    else:
+        config_errors_reason = "Not requested"
+
+    reason = "" if allowed else (
+        f"Estimated {required} API calls but only {available} available "
+        f"({requests_used}/{request_limit} used). "
+        f"Org has {site_count} sites and {total_devices} devices. "
+        f"Breakdown: {base_calls} base + {pagination} pagination + {site_settings_calls} site settings "
+        f"+ {assigned_template_calls} templates + {per_site_gw} gateway config "
+        f"+ {config_error_calls} config errors."
+    )
+
+    return {
+        "allowed": allowed,
+        "reason": reason,
+        "available": available,
+        "estimated": required,
+        "config_errors_allowed": config_errors_allowed,
+        "config_errors_reason": config_errors_reason,
+        "site_count": site_count,
+        "device_counts": device_counts,
+    }
+
+
+async def _fetch_org_device_events(
+    session: APISession, org_id: str,
+) -> tuple[dict[str, dict], list[dict]]:
+    """Fetch all device events across the org in the last 24h.
+
+    Returns (config_events, raw_events) — same shape as _fetch_all_device_events
+    but keyed by MAC across all sites.
+    """
+    config_events: dict[str, dict] = {}
+    all_events: list[dict] = []
+    try:
+        results = await _paginate_org(
+            org_devices.searchOrgDeviceEvents, session, org_id,
+            limit=1000, device_type="all", duration="24h",
+        )
+        all_events = results
+
+        for ev in all_events:
+            if not isinstance(ev, dict):
+                continue
+            ev_type = ev.get("type", "")
+            if not any(ev_type.startswith(prefix) for prefix in _CONFIG_EVENT_PREFIXES):
+                continue
+            mac = ev.get("mac", ev.get("device_mac", ""))
+            if not mac:
+                continue
+            timestamp = ev.get("timestamp", 0)
+            existing = config_events.get(mac)
+            if existing and existing["timestamp"] >= timestamp:
+                continue
+            is_success = ev_type.endswith("_CONFIGURED") or ev_type.endswith("_CONFIG_CHANGED_BY_USER")
+            config_events[mac] = {
+                "type": ev_type,
+                "timestamp": timestamp,
+                "status": "pass" if is_success else "fail",
+            }
+    except Exception as e:
+        logger.warning("org_device_events_fetch_error error=%s", str(e))
+
+    return config_events, all_events
+
+
+def _group_by_site(items: list[dict], site_key: str = "site_id") -> dict[str, list[dict]]:
+    """Partition a flat list of dicts into per-site buckets."""
+    grouped: dict[str, list[dict]] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        sid = item.get(site_key, "")
+        if sid:
+            grouped.setdefault(sid, []).append(item)
+    return grouped
+
+
+def _parse_org_port_stats(port_results: list[dict]) -> tuple[dict[str, dict[str, list[dict]]], dict[str, dict[str, list[dict]]]]:
+    """Parse org-level port stats into per-site, per-mac structures.
+
+    Returns (sw_ports_by_site, gw_ports_by_site) where each is:
+      {site_id: {mac: [port_dict, ...]}}
+    """
+    sw_copper_up: dict[str, dict[str, list[dict]]] = {}
+    sw_optics: dict[str, dict[str, list[dict]]] = {}
+    gw_ports: dict[str, dict[str, dict[str, dict]]] = {}
+
+    for port in port_results:
+        if not isinstance(port, dict):
+            continue
+        site_id = port.get("site_id", "")
+        device_mac = port.get("mac", "")
+        port_id = port.get("port_id", "")
+        device_type = port.get("device_type", "")
+        if not site_id or not device_mac or not port_id:
+            continue
+
+        if device_type == "switch":
+            if port.get("up") and _is_copper_port(port_id):
+                sw_copper_up.setdefault(site_id, {}).setdefault(device_mac, []).append({
+                    "port_id": port_id,
+                    "neighbor_system_name": port.get("neighbor_system_name", ""),
+                    "neighbor_port_desc": port.get("neighbor_port_desc", ""),
+                })
+            optic = _extract_port_optics(port)
+            if optic:
+                sw_optics.setdefault(site_id, {}).setdefault(device_mac, []).append(optic)
+        elif device_type == "gateway":
+            gw_ports.setdefault(site_id, {}).setdefault(device_mac, {})[port_id] = port
+
+    return (sw_copper_up, sw_optics), gw_ports
+
+
+def _template_applies_to_site(
+    template: dict, site_id: str, site_sitegroup_ids: list[str],
+) -> bool:
+    """Check whether a template/WLAN applies to a given site based on its applies/exceptions rules."""
+    applies = template.get("applies", {})
+    exceptions = template.get("exceptions", {})
+
+    # Check exceptions first
+    if site_id in exceptions.get("site_ids", []):
+        return False
+    if any(sg in exceptions.get("sitegroup_ids", []) for sg in site_sitegroup_ids):
+        return False
+
+    # If org_id is in applies, it targets the whole org (minus exceptions)
+    if "org_id" in applies:
+        return True
+
+    # If specific site_ids match
+    if site_id in applies.get("site_ids", []):
+        return True
+
+    # If specific sitegroup_ids match any of the site's groups
+    if any(sg in applies.get("sitegroup_ids", []) for sg in site_sitegroup_ids):
+        return True
+
+    # Empty applies (no site_ids, no sitegroup_ids, no org_id) means not assigned
+    return False
+
+
+async def run_org_validation(
+    job_id: str,
+    cloud_region: str,
+    org_id: str,
+    include_config_errors: bool = False,
+    progress_callback=None,
+    token: str | None = None,
+    cookies: dict | None = None,
+    csrftoken: str | None = None,
+) -> None:
+    """Run org-level validation across all sites."""
+    from app.services.mist_service import MistService
+    from app import db
+
+    tracker = _ProgressTracker(job_id, progress_callback, steps=_ORG_STEPS)
+
+    try:
+        mist = MistService(
+            org_id=org_id,
+            cloud_region=cloud_region,
+            api_token=token,
+            cookies=cookies,
+            csrftoken=csrftoken,
+        )
+        session = mist.get_session()
+        org_name = ""
+
+        # ── Step 1: Pre-flight ──
+        await tracker.start_step("preflight", "Checking API budget...")
+        budget = await check_org_api_budget(session, org_id, include_config_errors)
+        if not budget["allowed"]:
+            raise RuntimeError(f"Insufficient API budget: {budget['reason']}")
+        # Adjust config errors if budget doesn't allow
+        if include_config_errors and not budget["config_errors_allowed"]:
+            include_config_errors = False
+            logger.info("org_validation config_errors disabled: %s", budget["config_errors_reason"])
+        await tracker.complete_step("preflight", "API budget OK", increment=False)
+        await db.update_job(job_id, status="running")
+
+        # ── Step 2: Org data ──
+        await tracker.start_step("org_data", "Fetching organization data...")
+        org_info_resp = await mistapi.arun(session.mist_get, f"/api/v1/orgs/{org_id}")
+        if org_info_resp.status_code == 200 and isinstance(org_info_resp.data, dict):
+            org_name = org_info_resp.data.get("name", "")
+        await db.update_job(job_id, org_name=org_name, site_name=org_name)
+
+        # Parallel org-level fetches
+        sites_task = _paginate_org(org_sites.listOrgSites, session, org_id, limit=1000)
+        groups_task = mistapi.arun(org_sitegroups.listOrgSiteGroups, session, org_id, limit=1000)
+        templates_task = mistapi.arun(org_templates_api.listOrgTemplates, session, org_id, limit=1000)
+        org_wlans_task = mistapi.arun(org_wlans.listOrgWlans, session, org_id, limit=1000)
+        org_settings_task = mistapi.arun(org_setting.getOrgSettings, session, org_id)
+
+        sites_list, groups_resp, templates_resp, wlans_resp, osettings_resp = await asyncio.gather(
+            sites_task, groups_task, templates_task, org_wlans_task, org_settings_task,
+        )
+
+        # Parse org data
+        site_groups = groups_resp.data if groups_resp.status_code == 200 and isinstance(groups_resp.data, list) else []
+        org_templates = templates_resp.data if templates_resp.status_code == 200 and isinstance(templates_resp.data, list) else []
+        org_wlans_list = wlans_resp.data if wlans_resp.status_code == 200 and isinstance(wlans_resp.data, list) else []
+        org_settings = osettings_resp.data if osettings_resp.status_code == 200 and isinstance(osettings_resp.data, dict) else {}
+
+        # Build site lookup from listOrgSites
+        site_map: dict[str, dict] = {}
+        for s in sites_list:
+            if isinstance(s, dict) and s.get("id"):
+                site_map[s["id"]] = s
+
+        # Fetch site settings for all sites in parallel (gives us vars, auto_upgrade, template overrides)
+        site_settings_map: dict[str, dict] = {}
+        settings_sem = asyncio.Semaphore(10)
+
+        async def _fetch_site_settings(site_id: str) -> None:
+            async with settings_sem:
+                try:
+                    resp = await mistapi.arun(setting.getSiteSetting, session, site_id)
+                    if resp.status_code == 200 and isinstance(resp.data, dict):
+                        site_settings_map[site_id] = resp.data
+                except Exception as e:
+                    logger.warning("site_settings_fetch_failed site_id=%s error=%s", site_id, str(e))
+
+        await asyncio.gather(*[_fetch_site_settings(sid) for sid in site_map])
+        await tracker.update_step("org_data", f"{len(site_map)} sites, {len(site_settings_map)} settings fetched")
+
+        # Build sitegroup lookup
+        group_map: dict[str, str] = {}
+        for g in site_groups:
+            if isinstance(g, dict) and g.get("id"):
+                group_map[g["id"]] = g.get("name", "")
+
+        await tracker.complete_step("org_data", f"{len(site_map)} sites, {len(org_templates)} templates", increment=False)
+
+        # ── Step 3: Device stats ──
+        await tracker.start_step("device_stats", "Fetching device statistics...")
+        ap_stats_task = _paginate_org(org_stats.listOrgDevicesStats, session, org_id, limit=1000, type="ap")
+        sw_stats_task = _paginate_org(org_stats.listOrgDevicesStats, session, org_id, limit=1000, type="switch")
+        gw_stats_task = _paginate_org(org_stats.listOrgDevicesStats, session, org_id, limit=1000, type="gateway")
+
+        all_ap_stats, all_sw_stats, all_gw_stats = await asyncio.gather(
+            ap_stats_task, sw_stats_task, gw_stats_task,
+        )
+        total_devices = len(all_ap_stats) + len(all_sw_stats) + len(all_gw_stats)
+        await tracker.complete_step("device_stats", f"{total_devices} devices", increment=False)
+
+        # ── Step 4: Port stats ──
+        await tracker.start_step("port_stats", "Fetching port statistics...")
+        all_port_stats = await _paginate_org(org_stats.searchOrgSwOrGwPorts, session, org_id, limit=1000)
+        (sw_copper_up_by_site, sw_optics_by_site), gw_ports_by_site = _parse_org_port_stats(all_port_stats)
+        await tracker.complete_step("port_stats", f"{len(all_port_stats)} ports", increment=False)
+
+        # ── Step 5: Firmware versions ──
+        await tracker.start_step("firmware", "Fetching firmware versions...")
+        ap_models = {d.get("model", "") for d in all_ap_stats if d.get("model")}
+        switch_models = {d.get("model", "") for d in all_sw_stats if d.get("model")}
+        srx_models: set[str] = set()
+        ssr_macs: list[tuple[str, str]] = []
+        for gw in all_gw_stats:
+            m, mac = gw.get("model", ""), gw.get("mac", "")
+            if m.upper().startswith("SSR"):
+                ssr_macs.append((m, mac))
+            elif m:
+                srx_models.add(m)
+        fw_versions = await _fetch_firmware_versions(session, org_id, ap_models, switch_models, srx_models, ssr_macs)
+        _apply_ap_auto_upgrade(fw_versions, org_settings.get("auto_upgrade", {}))
+        _apply_junos_auto_upgrade(fw_versions, "switch", org_settings.get("switch", {}).get("auto_upgrade", {}))
+        _apply_junos_auto_upgrade(fw_versions, "gateway", org_settings.get("juniper_srx", {}).get("auto_upgrade", {}))
+        await tracker.complete_step("firmware", "Firmware versions resolved", increment=False)
+
+        # ── Step 6: Device events ──
+        await tracker.start_step("device_events", "Fetching device events...")
+        config_events, raw_events = await _fetch_org_device_events(session, org_id)
+        events_by_mac = _correlate_device_events(raw_events)
+        await tracker.complete_step("device_events", f"{len(raw_events)} events", increment=False)
+
+        # ── Step 7: Variables ──
+        await tracker.start_step("variables", "Checking template variables...")
+
+        # Build template_id -> template lookup for WLAN scoping (site templates from listOrgTemplates)
+        template_by_id: dict[str, dict] = {}
+        for tmpl in org_templates:
+            if isinstance(tmpl, dict) and tmpl.get("id"):
+                template_by_id[tmpl["id"]] = tmpl
+
+        # Fetch assigned templates (RF, network, gateway, site) — unique IDs only
+        # Template IDs are in the site object (listOrgSites), NOT in getSiteSetting
+        assigned_tmpl_cache: dict[str, tuple[str, dict]] = {}  # tmpl_id -> (type, content)
+        unique_assigned: list[tuple[str, str, object, str]] = []  # (field, type, api_fn, id)
+        for sid in site_map:
+            sd = site_map[sid]
+            for field, tmpl_type, api_fn in _ASSIGNED_TEMPLATE_FIELDS:
+                tmpl_id = sd.get(field)
+                if tmpl_id and tmpl_id not in assigned_tmpl_cache:
+                    assigned_tmpl_cache[tmpl_id] = (tmpl_type, {})  # placeholder
+                    unique_assigned.append((field, tmpl_type, api_fn, tmpl_id))
+
+        if unique_assigned:
+            fetch_tasks = [
+                _fetch_one_assigned_template(session, org_id, f, t, fn, tid)
+                for f, t, fn, tid in unique_assigned
+            ]
+            fetch_results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
+            for result in fetch_results:
+                if isinstance(result, Exception):
+                    continue
+                _field, tmpl_type, tmpl_id, data = result
+                if data:
+                    assigned_tmpl_cache[tmpl_id] = (tmpl_type, data)
+
+        await tracker.complete_step("variables", f"{len(assigned_tmpl_cache)} assigned templates fetched", increment=False)
+
+        # ── Group data by site ──
+        ap_by_site = _group_by_site(all_ap_stats)
+        sw_by_site = _group_by_site(all_sw_stats)
+        gw_by_site = _group_by_site(all_gw_stats)
+
+        # Determine which sites have devices
+        all_site_ids = set(site_map.keys())
+        sites_with_gateways = {sid for sid in all_site_ids if sid in gw_by_site}
+
+        # Switch to determinate progress: 3 device-type steps + config_errors
+        tracker.overall_total = 3 + 1  # ap + sw + gw + config_errors
+        tracker.overall_completed = 0
+
+        # ── Step 8: AP validation ──
+        await tracker.start_step("ap_validation", f"Validating {len(all_ap_stats)} APs...")
+        site_results: dict[str, dict] = {}
+        site_fw_map: dict[str, dict] = {}  # per-site fw_versions with site AP auto_upgrade
+        for site_id in all_site_ids:
+            site_data = site_map.get(site_id, {})
+            site_settings = site_settings_map.get(site_id, {})
+            site_ap_stats = ap_by_site.get(site_id, [])
+            site_vars = site_settings.get("vars") or {}
+
+            # Per-site firmware: apply site AP auto_upgrade on top of org (3-tier override)
+            site_auto_upgrade = site_settings.get("auto_upgrade") or {}
+            site_fw = {**fw_versions, "ap": copy.deepcopy(fw_versions.get("ap", {}))}
+            _apply_ap_auto_upgrade(site_fw, site_auto_upgrade)
+            site_fw_map[site_id] = site_fw
+
+            # Build site info
+            sg_ids = site_data.get("sitegroup_ids", [])
+            sg_names = [group_map.get(gid, "") for gid in sg_ids if group_map.get(gid)]
+
+            # Filter templates that apply to this site
+            site_templates: list[dict] = []
+            for tmpl in org_templates:
+                if isinstance(tmpl, dict) and _template_applies_to_site(tmpl, site_id, sg_ids):
+                    site_templates.append(tmpl)
+
+            # Filter org WLANs that apply to this site (via their linked template)
+            site_org_wlans: list[dict] = []
+            for w in org_wlans_list:
+                if not isinstance(w, dict):
+                    continue
+                wlan_tmpl_id = w.get("template_id", "")
+                if wlan_tmpl_id and wlan_tmpl_id in template_by_id:
+                    wlan_scope = template_by_id[wlan_tmpl_id]
+                else:
+                    wlan_scope = {"applies": {"org_id": org_id}}
+                if _template_applies_to_site(wlan_scope, site_id, sg_ids):
+                    site_org_wlans.append(w)
+
+            # Build templates_raw for _validate_template_variables — same format as single-site report
+            site_templates_raw: list[tuple[str, list[dict]]] = []
+            for t in site_templates:
+                site_templates_raw.append(("site_template", [t]))
+            for field, tmpl_type, _ in _ASSIGNED_TEMPLATE_FIELDS:
+                tmpl_id = site_data.get(field)
+                if tmpl_id and tmpl_id in assigned_tmpl_cache:
+                    _, at_content = assigned_tmpl_cache[tmpl_id]
+                    if at_content:
+                        site_templates_raw.append((tmpl_type, [at_content]))
+
+            # Build templates list for site_info display
+            site_template_info = [{"type": "site_template", "name": t.get("name", "")} for t in site_templates]
+            for field, _at_type, _at_fn in _ASSIGNED_TEMPLATE_FIELDS:
+                at_id = site_data.get(field)
+                if at_id and at_id in assigned_tmpl_cache:
+                    at_type, at_content = assigned_tmpl_cache[at_id]
+                    if at_content:
+                        site_template_info.append({"type": at_type, "name": at_content.get("name", at_id[:8])})
+
+            site_result: dict = {
+                "site_info": {
+                    "site_name": site_data.get("name", ""),
+                    "site_address": site_data.get("address", ""),
+                    "site_groups": sg_names,
+                    "templates": site_template_info,
+                    "org_wlans": [{"ssid": w.get("ssid", "")} for w in site_org_wlans],
+                    "site_wlans": [],
+                    "device_summary": {},
+                },
+                "template_variables": _validate_template_variables(site_templates_raw, site_org_wlans, site_vars),
+                "aps": _validate_aps(site_ap_stats, config_events, site_fw) if site_ap_stats else [],
+                "switches": [],
+                "gateways": [],
+                "summary": {},
+            }
+            site_results[site_id] = site_result
+
+        tracker.update_label("ap_validation", f"Access Points ({len(all_ap_stats)})")
+        await tracker.complete_step("ap_validation", f"{len(all_ap_stats)} APs validated")
+
+        # ── Step 9: Switch validation ──
+        await tracker.start_step("sw_validation", f"Validating {len(all_sw_stats)} switches...")
+        for site_id in all_site_ids:
+            site_sw_stats = sw_by_site.get(site_id, [])
+            if not site_sw_stats:
+                continue
+            sw_results = _validate_switch_health(site_sw_stats, config_events, fw_versions)
+            # Attach LLDP neighbors and optics
+            site_copper_up = sw_copper_up_by_site.get(site_id, {})
+            site_sw_optics = sw_optics_by_site.get(site_id, {})
+            for sw_result in sw_results:
+                sw_mac = sw_result["mac"]
+                up_ports = site_copper_up.get(sw_mac, [])
+                lldp_neighbors = []
+                for p in up_ports:
+                    sys_name = p.get("neighbor_system_name", "")
+                    port_desc = p.get("neighbor_port_desc", "")
+                    if sys_name or port_desc:
+                        lldp_neighbors.append({
+                            "port_id": p["port_id"],
+                            "neighbor_system_name": sys_name,
+                            "neighbor_port_desc": port_desc,
+                        })
+                sw_result["lldp_neighbors"] = lldp_neighbors
+                optics = site_sw_optics.get(sw_mac, [])
+                sw_result["port_optics"] = optics
+                sw_result["checks"].append(_build_optics_check(optics))
+            site_results[site_id]["switches"] = sw_results
+
+        tracker.update_label("sw_validation", f"Switches ({len(all_sw_stats)})")
+        await tracker.complete_step("sw_validation", f"{len(all_sw_stats)} switches validated")
+
+        # ── Step 10: Gateway validation ──
+        await tracker.start_step("gw_validation", f"Validating {len(all_gw_stats)} gateways...")
+
+        # Per-site gateway config fetches (parallel with semaphore)
+        sem = asyncio.Semaphore(10)
+
+        async def _validate_site_gateways(site_id: str) -> None:
+            site_gw_stats = gw_by_site.get(site_id, [])
+            if not site_gw_stats:
+                return
+            # Look up gateway template from assigned_tmpl_cache
+            sd = site_map.get(site_id, {})
+            gw_tmpl_id = sd.get("gatewaytemplate_id")
+            site_gw_config = assigned_tmpl_cache.get(gw_tmpl_id, (None, {}))[1] if gw_tmpl_id else {}
+            async with sem:
+                try:
+                    gw_results = await _validate_gateways(
+                        session, org_id, site_id, site_gw_stats,
+                        config_events, site_settings_map.get(site_id, {}).get("vars") or {},
+                        gw_template_config=site_gw_config or None,
+                        fw_versions=site_fw_map.get(site_id, fw_versions),
+                    )
+                    site_results[site_id]["gateways"] = gw_results
+                except Exception as e:
+                    logger.warning("org_gw_validation_failed site_id=%s error=%s", site_id, str(e))
+
+        await asyncio.gather(*[_validate_site_gateways(sid) for sid in sites_with_gateways])
+        tracker.update_label("gw_validation", f"Gateways ({len(all_gw_stats)})")
+        await tracker.complete_step("gw_validation", f"{len(all_gw_stats)} gateways validated")
+
+        # ── Step 11: Config errors (opt-in) ──
+        if include_config_errors:
+            all_sw_gw_devices = []
+            for site_id, sr in site_results.items():
+                for dev in sr.get("switches", []) + sr.get("gateways", []):
+                    if dev.get("device_id"):
+                        dev["_site_id"] = site_id
+                        all_sw_gw_devices.append(dev)
+            count = len(all_sw_gw_devices)
+            tracker.update_label("config_errors", f"Config Command Errors ({count} devices)")
+            await tracker.start_step("config_errors", f"Checking {count} devices...")
+
+            # Run config error checks — need site_id per device
+            ce_sem = asyncio.Semaphore(10)
+
+            async def _check_one_ce(dev_result: dict) -> None:
+                device_id = dev_result.get("device_id", "")
+                dev_site_id = dev_result.pop("_site_id", "")
+                name = dev_result.get("name", device_id)
+                if not device_id or not dev_site_id:
+                    return
+                async with ce_sem:
+                    try:
+                        resp = await mistapi.arun(devices.getSiteDeviceConfigCmd, session, dev_site_id, device_id)
+                        if resp.status_code == 200 and isinstance(resp.data, dict):
+                            errors = resp.data.get("_errors", [])
+                            if not isinstance(errors, list):
+                                errors = []
+                        else:
+                            errors = None
+                    except Exception as e:
+                        logger.warning("config_cmd_failed device_id=%s error=%s", device_id, str(e))
+                        errors = None
+                if errors is None:
+                    dev_result["checks"].append({"check": "config_errors", "status": "info", "value": "Unable to retrieve"})
+                else:
+                    dev_result["config_errors"] = errors
+                    dev_result["checks"].append({
+                        "check": "config_errors",
+                        "status": "pass" if not errors else "warn",
+                        "value": "No errors" if not errors else f"{len(errors)} error(s)",
+                    })
+                await tracker.update_step("config_errors", f"Checked {name}")
+
+            await asyncio.gather(*[_check_one_ce(d) for d in all_sw_gw_devices])
+            await tracker.complete_step("config_errors", f"{count} devices checked")
+        else:
+            await tracker.start_step("config_errors", "Skipped (opt-in)")
+            await tracker.complete_step("config_errors", "Skipped (opt-in)")
+
+        # ── Attach events and compute summaries ──
+        for site_id, sr in site_results.items():
+            _attach_device_events(sr, events_by_mac)
+            sr["site_info"]["device_summary"] = _compute_device_summary(sr)
+            sr["summary"] = _compute_summary(sr)
+
+        # Build org-level summary
+        org_summary = {"pass": 0, "fail": 0, "warn": 0, "info": 0}
+        for sr in site_results.values():
+            for key in org_summary:
+                org_summary[key] += sr["summary"].get(key, 0)
+
+        result = {
+            "org_info": {
+                "org_name": org_name,
+                "org_id": org_id,
+                "site_count": len(site_map),
+                "device_counts": {
+                    "aps": len(all_ap_stats),
+                    "switches": len(all_sw_stats),
+                    "gateways": len(all_gw_stats),
+                },
+            },
+            "sites": site_results,
+            "summary": org_summary,
+        }
+
+        await db.update_job(
+            job_id,
+            result=result,
+            status="completed",
+            completed_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+        if progress_callback:
+            await progress_callback(job_id, {"type": "report_complete", "data": {"status": "completed", "report_id": job_id}})
+
+        logger.info("org_validation_completed job_id=%s org_id=%s sites=%d devices=%d", job_id, org_id, len(site_results), total_devices)
+
+    except Exception as e:
+        logger.error("org_validation_failed job_id=%s error=%s", job_id, str(e), exc_info=True)
+        user_msg = f"Org validation failed: {e}" if "Insufficient API budget" in str(e) else "Validation failed. Please check your credentials and try again."
+        await db.update_job(job_id, status="failed", error=user_msg)
+
+        if progress_callback:
+            await progress_callback(
+                job_id,
+                {"type": "report_complete", "data": {"status": "failed", "report_id": job_id, "error": user_msg}},
+            )

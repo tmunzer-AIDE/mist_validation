@@ -1,7 +1,6 @@
 import asyncio
 import re
 import uuid
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import Response
@@ -11,9 +10,9 @@ from app.api.deps import get_session
 from app.api.sites import TDR_SITE_GROUP
 from app.core.session import SessionData
 from app.core.websocket import ws_manager
-from app.models import ReportCreateRequest, ReportListResponse, ReportResponse
+from app.models import BudgetResponse, ReportCreateRequest, ReportListResponse, ReportResponse
 from app.services import validation_service
-from app.services.export_service import generate_csv_zip, generate_pdf
+from app.services.export_service import generate_csv_zip, generate_org_csv_zip, generate_org_pdf, generate_pdf
 from app.services.mist_service import MistService
 
 router = APIRouter()
@@ -32,8 +31,9 @@ def _job_to_response(job: dict) -> ReportResponse:
         id=job["id"],
         org_id=job["org_id"],
         org_name=job.get("org_name", ""),
-        site_id=job["site_id"],
+        site_id=job.get("site_id", ""),
         site_name=job.get("site_name", ""),
+        scope=job.get("scope", "site"),
         status=job.get("status", "pending"),
         progress=job.get("progress", {}),
         result=job.get("result"),
@@ -54,6 +54,31 @@ async def _progress_callback(job_id: str, payload: dict) -> None:
     await ws_manager.broadcast(f"report:{job_id}", payload)
 
 
+def _make_mist_service(session: SessionData, org_id: str) -> MistService:
+    return MistService(
+        org_id=org_id,
+        cloud_region=session.mist_cloud,
+        api_token=session.mist_token,
+        cookies=session.mist_cookies,
+        csrftoken=session.mist_csrftoken,
+    )
+
+
+@router.get("/reports/budget", response_model=BudgetResponse)
+async def check_budget(
+    org_id: str,
+    include_config_errors: bool = False,
+    session: SessionData = Depends(get_session),
+):
+    if org_id not in session.org_ids:
+        raise HTTPException(status_code=403, detail="Access denied to this organization")
+    mist = _make_mist_service(session, org_id)
+    budget = await validation_service.check_org_api_budget(
+        mist.get_session(), org_id, include_config_errors
+    )
+    return BudgetResponse(**budget)
+
+
 @router.post("/reports", response_model=ReportResponse, status_code=201)
 async def create_report(
     request: ReportCreateRequest,
@@ -61,44 +86,38 @@ async def create_report(
     session: SessionData = Depends(get_session),
 ):
     org_id = str(request.org_id)
-    site_id = str(request.site_id)
+    site_id = str(request.site_id) if request.site_id else ""
 
     # Verify org access
     if org_id not in session.org_ids:
         raise HTTPException(status_code=403, detail="Access denied to this organization")
 
-    # Cable test safety checks
-    if request.include_cable_tests:
-        if not session.can_write(org_id):
-            raise HTTPException(
-                status_code=403,
-                detail="Cable tests require write access to the organization.",
-            )
-        if TDR_SITE_GROUP:
-            mist = MistService(
-                org_id=org_id,
-                cloud_region=session.mist_cloud,
-                api_token=session.mist_token,
-                cookies=session.mist_cookies,
-                csrftoken=session.mist_csrftoken,
-            )
-            site_groups = await mist.get_site_groups()
-            tdr_group = next(
-                (g for g in site_groups if g.get("name") == TDR_SITE_GROUP),
-                None,
-            )
-            if not tdr_group:
+    if request.scope == "site":
+        # Cable test safety checks
+        if request.include_cable_tests:
+            if not session.can_write(org_id):
                 raise HTTPException(
                     status_code=403,
-                    detail=f"Cable tests are not available. The site group '{TDR_SITE_GROUP}' does not exist.",
+                    detail="Cable tests require write access to the organization.",
                 )
-            # Check site membership via site's sitegroup_ids (same as sites.py)
-            site_data = await mist.get_site(site_id)
-            if tdr_group["id"] not in site_data.get("sitegroup_ids", []):
-                raise HTTPException(
-                    status_code=403,
-                    detail=f"Cable tests are not enabled for this site. Add it to the '{TDR_SITE_GROUP}' site group.",
+            if TDR_SITE_GROUP:
+                mist = _make_mist_service(session, org_id)
+                site_groups = await mist.get_site_groups()
+                tdr_group = next(
+                    (g for g in site_groups if g.get("name") == TDR_SITE_GROUP),
+                    None,
                 )
+                if not tdr_group:
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"Cable tests are not available. The site group '{TDR_SITE_GROUP}' does not exist.",
+                    )
+                site_data = await mist.get_site(site_id)
+                if tdr_group["id"] not in site_data.get("sitegroup_ids", []):
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"Cable tests are not enabled for this site. Add it to the '{TDR_SITE_GROUP}' site group.",
+                    )
 
     job_id = str(uuid.uuid4())
     org_name = _resolve_org_name(session, org_id)
@@ -108,23 +127,37 @@ async def create_report(
         org_id=org_id,
         org_name=org_name,
         site_id=site_id,
-        include_cable_tests=request.include_cable_tests,
+        include_cable_tests=request.include_cable_tests if request.scope == "site" else False,
         include_config_errors=request.include_config_errors,
+        scope=request.scope,
     )
 
-    background_tasks.add_task(
-        validation_service.run_post_deployment_validation,
-        job_id=job_id,
-        site_id=site_id,
-        cloud_region=session.mist_cloud,
-        org_id=org_id,
-        include_cable_tests=request.include_cable_tests,
-        include_config_errors=request.include_config_errors,
-        progress_callback=_progress_callback,
-        token=session.mist_token,
-        cookies=session.mist_cookies,
-        csrftoken=session.mist_csrftoken,
-    )
+    if request.scope == "org":
+        background_tasks.add_task(
+            validation_service.run_org_validation,
+            job_id=job_id,
+            cloud_region=session.mist_cloud,
+            org_id=org_id,
+            include_config_errors=request.include_config_errors,
+            progress_callback=_progress_callback,
+            token=session.mist_token,
+            cookies=session.mist_cookies,
+            csrftoken=session.mist_csrftoken,
+        )
+    else:
+        background_tasks.add_task(
+            validation_service.run_post_deployment_validation,
+            job_id=job_id,
+            site_id=site_id,
+            cloud_region=session.mist_cloud,
+            org_id=org_id,
+            include_cable_tests=request.include_cable_tests,
+            include_config_errors=request.include_config_errors,
+            progress_callback=_progress_callback,
+            token=session.mist_token,
+            cookies=session.mist_cookies,
+            csrftoken=session.mist_csrftoken,
+        )
 
     return _job_to_response(job)
 
@@ -175,11 +208,14 @@ async def export_pdf(job_id: str, session: SessionData = Depends(get_session)):
     if job.get("status") != "completed":
         raise HTTPException(status_code=400, detail="Report not completed")
     try:
-        pdf_bytes = await asyncio.to_thread(generate_pdf, job)
+        is_org = job.get("scope") == "org"
+        gen = generate_org_pdf if is_org else generate_pdf
+        pdf_bytes = await asyncio.to_thread(gen, job)
+        name = job.get("org_name") or job.get("site_name") or "report"
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="validation_{_safe_filename(job.get("site_name", "site"))}.pdf"'},
+            headers={"Content-Disposition": f'attachment; filename="validation_{_safe_filename(name)}.pdf"'},
         )
     except Exception:
         raise HTTPException(status_code=500, detail="PDF generation failed")
@@ -191,11 +227,14 @@ async def export_csv(job_id: str, session: SessionData = Depends(get_session)):
     if job.get("status") != "completed":
         raise HTTPException(status_code=400, detail="Report not completed")
     try:
-        zip_bytes = await asyncio.to_thread(generate_csv_zip, job)
+        is_org = job.get("scope") == "org"
+        gen = generate_org_csv_zip if is_org else generate_csv_zip
+        zip_bytes = await asyncio.to_thread(gen, job)
+        name = job.get("org_name") or job.get("site_name") or "report"
         return Response(
             content=zip_bytes,
             media_type="application/zip",
-            headers={"Content-Disposition": f'attachment; filename="validation_{_safe_filename(job.get("site_name", "site"))}.zip"'},
+            headers={"Content-Disposition": f'attachment; filename="validation_{_safe_filename(name)}.zip"'},
         )
     except Exception:
         raise HTTPException(status_code=500, detail="CSV generation failed")

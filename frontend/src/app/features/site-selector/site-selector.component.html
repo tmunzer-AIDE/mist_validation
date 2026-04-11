@@ -23,6 +23,17 @@
     <mat-card>
       <mat-card-title>New Report</mat-card-title>
 
+      <!-- Scope toggle -->
+      <div class="section-label">Scope</div>
+      <mat-button-toggle-group
+        [value]="scope()"
+        (change)="onScopeChange($event.value)"
+        class="scope-toggle"
+      >
+        <mat-button-toggle value="site">Site</mat-button-toggle>
+        <mat-button-toggle value="org">Organization</mat-button-toggle>
+      </mat-button-toggle-group>
+
       <!-- Org picker (only if multi-org) -->
       @if (authInfo().orgs.length > 1) {
         <div class="section-label">Organization</div>
@@ -46,60 +57,90 @@
         </mat-form-field>
       }
 
-      <!-- Site picker -->
-      <div class="section-label">Site</div>
-      <mat-form-field class="full-width" appearance="outline">
-        <mat-label>Select site</mat-label>
-        <input
-          matInput
-          [matAutocomplete]="siteAuto"
-          [formControl]="siteSearchCtrl"
-          placeholder="Type to filter..."
-        />
-        <mat-autocomplete
-          #siteAuto="matAutocomplete"
-          [displayWith]="displaySite"
-          (optionSelected)="selectedSite.set($event.option.value)"
-        >
-          @for (site of filteredSites(); track site.id) {
-            <mat-option [value]="site">{{ site.name }}</mat-option>
+      <!-- Site picker (only for site scope) -->
+      @if (scope() === 'site') {
+        <div class="section-label">Site</div>
+        <mat-form-field class="full-width" appearance="outline">
+          <mat-label>Select site</mat-label>
+          <input
+            matInput
+            [matAutocomplete]="siteAuto"
+            [formControl]="siteSearchCtrl"
+            placeholder="Type to filter..."
+          />
+          <mat-autocomplete
+            #siteAuto="matAutocomplete"
+            [displayWith]="displaySite"
+            (optionSelected)="selectedSite.set($event.option.value)"
+          >
+            @for (site of filteredSites(); track site.id) {
+              <mat-option [value]="site">{{ site.name }}</mat-option>
+            }
+          </mat-autocomplete>
+          @if (sitesLoading()) {
+            <mat-spinner matSuffix diameter="18"></mat-spinner>
           }
-        </mat-autocomplete>
-        @if (sitesLoading()) {
-          <mat-spinner matSuffix diameter="18"></mat-spinner>
-        }
-      </mat-form-field>
+        </mat-form-field>
 
-      <!-- Cable tests -->
-      <mat-checkbox
-        [formControl]="cableTestsCtrl"
-        [matTooltip]="cableTestsDisabledReason()"
-      >
-        Include cable tests
-      </mat-checkbox>
-      @if (selectedSite() && !canWriteOrg()) {
-        <div class="cable-info">
-          <mat-icon style="font-size:14px;width:24px;height:14px;">info</mat-icon>
-          {{ cableTestsDisabledReason() }}
-        </div>
-      } @else if (selectedSite() && !cableTestsAllowed()) {
-        <div class="cable-info">
-          <mat-icon style="font-size:14px;width:24px;height:14px;">info</mat-icon>
-          {{ cableTestsDisabledReason() }}
-        </div>
+        <!-- Cable tests (site scope only) -->
+        <mat-checkbox
+          [formControl]="cableTestsCtrl"
+          [matTooltip]="cableTestsDisabledReason()"
+        >
+          Include cable tests
+        </mat-checkbox>
+        @if (selectedSite() && !canWriteOrg()) {
+          <div class="cable-info">
+            <mat-icon style="font-size:14px;width:24px;height:14px;">info</mat-icon>
+            {{ cableTestsDisabledReason() }}
+          </div>
+        } @else if (selectedSite() && !cableTestsAllowed()) {
+          <div class="cable-info">
+            <mat-icon style="font-size:14px;width:24px;height:14px;">info</mat-icon>
+            {{ cableTestsDisabledReason() }}
+          </div>
+        }
+        @if (selectedSite() && cableTestsCtrl.value) {
+          <div class="cable-warn">
+            <mat-icon style="font-size:14px;width:24px;height:14px;">warning</mat-icon>
+            Cable tests can take several minutes on large deployments.
+          </div>
+        }
       }
-      @if (selectedSite() && cableTestsCtrl.value) {
-        <div class="cable-warn">
-          <mat-icon style="font-size:14px;width:24px;height:14px;">warning</mat-icon>
-          Cable tests can take several minutes on large deployments.
-        </div>
+
+      <!-- Org scope budget info -->
+      @if (scope() === 'org') {
+        @if (budgetLoading()) {
+          <div class="cable-info" style="margin-top:12px;">
+            <mat-spinner diameter="16" style="display:inline-block;margin-right:8px;"></mat-spinner>
+            Checking API budget...
+          </div>
+        } @else if (orgBudget()) {
+          @if (orgBudget()!.allowed) {
+            <div class="cable-info" style="margin-top:12px;">
+              <mat-icon style="font-size:14px;width:24px;height:14px;">info</mat-icon>
+              {{ orgBudget()!.site_count }} sites, {{ orgBudget()!.device_counts.ap + orgBudget()!.device_counts.switch + orgBudget()!.device_counts.gateway }} devices.
+              Est. {{ orgBudget()!.estimated }} / {{ orgBudget()!.available }} API calls available.
+            </div>
+          } @else {
+            <div class="error-msg" style="margin-top:12px;">
+              {{ orgBudget()!.reason }}
+            </div>
+          }
+        }
       }
 
       <!-- Config command errors -->
       <mat-checkbox [formControl]="configErrorsCtrl">
         Include config command errors
       </mat-checkbox>
-      @if (selectedSite() && configErrorsCtrl.value) {
+      @if (scope() === 'org' && orgBudget() && !orgBudget()!.config_errors_allowed) {
+        <div class="cable-info">
+          <mat-icon style="font-size:14px;width:24px;height:14px;">info</mat-icon>
+          {{ orgBudget()!.config_errors_reason }}
+        </div>
+      }
+      @if (configErrorsCtrl.value) {
         <div class="cable-warn">
           <mat-icon style="font-size:14px;width:24px;height:14px;">warning</mat-icon>
           Config command errors require one API call per switch and gateway.
@@ -120,7 +161,7 @@
         @if (generating()) {
           <mat-spinner diameter="18" style="display:inline-block;margin-right:8px;"></mat-spinner>
         }
-        Generate Report
+        Generate {{ scope() === 'org' ? 'Org' : '' }} Report
       </button>
     </mat-card>
 
@@ -159,6 +200,15 @@
               <td mat-cell *matCellDef="let row" class="truncate-cell" [matTooltip]="row.site_name">{{ row.site_name }}</td>
             </ng-container>
 
+            <ng-container matColumnDef="scope">
+              <th mat-header-cell *matHeaderCellDef>Scope</th>
+              <td mat-cell *matCellDef="let row">
+                <mat-icon style="font-size:16px;width:16px;height:16px;" [matTooltip]="row.scope === 'org' ? 'Organization report' : 'Site report'">
+                  {{ row.scope === 'org' ? 'business' : 'location_on' }}
+                </mat-icon>
+              </td>
+            </ng-container>
+
             <ng-container matColumnDef="status">
               <th mat-header-cell *matHeaderCellDef>Status</th>
               <td mat-cell *matCellDef="let row">
@@ -181,7 +231,7 @@
         matButton="tonal"
                   color="primary"
                   class="view-link"
-                  (click)="viewReport(row.id)"
+                  (click)="viewReport(row)"
                   style="margin-right: 8px;"
                 >
                   View

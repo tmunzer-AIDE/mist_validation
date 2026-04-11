@@ -91,6 +91,15 @@
   background-color: aliceblue;
 }
 
+.scope-toggle {
+  margin-bottom: 16px;
+  width: 100%;
+
+  .mat-button-toggle {
+    flex: 1;
+  }
+}
+
 .section-label {
   font-size: 11px;
   font-weight: 600;
