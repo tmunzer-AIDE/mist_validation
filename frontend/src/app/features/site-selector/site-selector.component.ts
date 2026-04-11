@@ -210,6 +210,12 @@ export class SiteSelectorComponent implements OnInit {
       }
     });
 
+    this.configErrorsCtrl.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => {
+      if (this.scope() === 'org') {
+        this.fetchBudget();
+      }
+    });
+
     this.siteSearchCtrl.valueChanges
       .pipe(debounceTime(0), distinctUntilChanged(), takeUntilDestroyed())
       .subscribe((val) => {

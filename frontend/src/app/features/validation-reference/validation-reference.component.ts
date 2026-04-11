@@ -40,7 +40,7 @@ export class ValidationReferenceComponent {
           name: 'Template Variables',
           id: 'template_variables',
           description:
-            'Verifies all Jinja2 variables referenced in templates (RF, network, gateway, site) are defined in site settings.',
+            'Verifies all Jinja2 variables referenced in templates (RF, network, gateway, site) and WLANs are defined in site settings. Portal built-in variables (code, duration) in smsMessageFormat are excluded.',
           pass: 'Variable is defined in site vars',
           warn: '',
           fail: 'Variable is not defined in site vars',
@@ -73,7 +73,7 @@ export class ValidationReferenceComponent {
           name: 'Firmware Version',
           id: 'firmware_version',
           description:
-            'Compares the running firmware against the recommended version. The recommended version is determined by the Mist API, and can be overridden by org-level or site-level auto-upgrade settings.',
+            'Compares the running firmware against the recommended version. The recommended version follows a 3-tier override chain: baseline from Mist API, then org-level auto-upgrade, then site-level auto-upgrade. Each tier overrides the previous when enabled.',
           pass: 'Running firmware matches the recommended version',
           warn: 'Running firmware differs from recommended',
           fail: 'AP only: firmware is tagged deprecated or alpha (when not in beta auto-upgrade mode)',
@@ -151,6 +151,15 @@ export class ValidationReferenceComponent {
           warn: '',
           fail: 'One or more cable pairs report a fault',
         },
+        {
+          name: 'Config Command Errors (Optional)',
+          id: 'config_errors',
+          description:
+            'Checks for configuration errors on EX, QFX switches and SRX gateways. Identifies cases where Mist has excluded parts of the configuration due to errors (e.g. missing configuration blocks, invalid references). Requires opt-in via the "Include config command errors" checkbox. One API call per device.',
+          pass: 'No configuration errors found',
+          warn: 'One or more configuration errors detected',
+          fail: '',
+        },
       ],
     },
     {
@@ -214,6 +223,15 @@ export class ValidationReferenceComponent {
           pass: 'All optics within acceptable power levels',
           warn: 'Some ports have low power readings',
           fail: 'One or more ports below failure threshold',
+        },
+        {
+          name: 'Config Command Errors (Optional)',
+          id: 'config_errors_gw',
+          description:
+            'Checks for configuration errors on SRX gateways. Identifies cases where Mist has excluded parts of the configuration due to errors (e.g. missing configuration blocks, invalid references). Requires opt-in via the "Include config command errors" checkbox. One API call per device.',
+          pass: 'No configuration errors found',
+          warn: 'One or more configuration errors detected',
+          fail: '',
         },
       ],
     },

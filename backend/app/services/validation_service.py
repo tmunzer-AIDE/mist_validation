@@ -2352,6 +2352,7 @@ async def check_org_api_budget(
         "estimated": required,
         "config_errors_allowed": config_errors_allowed,
         "config_errors_reason": config_errors_reason,
+        "config_error_calls": config_error_calls,
         "site_count": site_count,
         "device_counts": device_counts,
     }
