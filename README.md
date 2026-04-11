@@ -169,6 +169,7 @@ npm start  # Dev server on :4200, proxies API requests to :8080
 #### Production Build
 ```bash
 make angular  # Builds frontend and copies to backend/app/static
+cd backend
 uvicorn app.main:app --host 0.0.0.0 --port 8080
 ```
 

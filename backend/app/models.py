@@ -19,6 +19,7 @@ class ReportCreateRequest(BaseModel):
     site_id: UUID
     org_id: UUID
     include_cable_tests: bool = False
+    include_config_errors: bool = False
 
 
 class ReportResponse(BaseModel):
@@ -32,6 +33,7 @@ class ReportResponse(BaseModel):
     result: dict | None
     error: str | None
     include_cable_tests: bool
+    include_config_errors: bool
     created_at: str
     completed_at: str | None
 

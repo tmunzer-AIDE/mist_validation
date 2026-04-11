@@ -77,6 +77,7 @@ interface ReportResponse {
   result: ReportResult | null;
   error: string | null;
   include_cable_tests: boolean;
+  include_config_errors: boolean;
   created_at: string;
   completed_at: string | null;
 }
@@ -203,8 +204,8 @@ export class ReportViewComponent implements OnInit, OnDestroy {
 
   // Table column definitions
   apColumns = ['status', 'name', 'model', 'connection', 'firmware', 'eth0_speed', 'power', 'config', 'lldp', 'events'];
-  switchColumns = ['status', 'name', 'model', 'type', 'connection', 'firmware', 'config', 'cable_tests', 'optics', 'events'];
-  gatewayColumns = ['status', 'name', 'model', 'type', 'connection', 'firmware', 'config', 'wan', 'lan', 'optics', 'events'];
+  switchColumns = ['status', 'name', 'model', 'type', 'connection', 'firmware', 'config', 'cable_tests', 'config_errors', 'optics', 'events'];
+  gatewayColumns = ['status', 'name', 'model', 'type', 'connection', 'firmware', 'config', 'wan', 'lan', 'config_errors', 'optics', 'events'];
 
   // Expose helpers to template
   getCheckValue = getCheckValue;

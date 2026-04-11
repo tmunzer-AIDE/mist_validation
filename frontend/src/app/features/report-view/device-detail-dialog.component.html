@@ -157,6 +157,18 @@
   </div>
   }
 
+  <!-- Config Command Errors (switch) -->
+  @if (switchData.config_errors?.length) {
+  <div class="section-block">
+  <div class="section-title">Configuration Errors ({{ switchData.config_errors.length }})</div>
+  <ul class="config-errors-list">
+    @for (err of switchData.config_errors; track err) {
+    <li class="config-error-item status-warn">{{ err }}</li>
+    }
+  </ul>
+  </div>
+  }
+
   <!-- Optic Modules (switch) -->
   @if (sortedPortOptics.length) {
   <div class="section-block">
@@ -429,6 +441,18 @@
   </table>
   }
   </div>
+
+  <!-- Config Command Errors (gateway) -->
+  @if (gatewayData.config_errors?.length) {
+  <div class="section-block">
+  <div class="section-title">Configuration Errors ({{ gatewayData.config_errors.length }})</div>
+  <ul class="config-errors-list">
+    @for (err of gatewayData.config_errors; track err) {
+    <li class="config-error-item status-warn">{{ err }}</li>
+    }
+  </ul>
+  </div>
+  }
 
   <!-- Optic Modules (gateway) -->
   @if (sortedPortOptics.length) {

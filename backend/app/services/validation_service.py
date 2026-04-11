@@ -73,6 +73,7 @@ _STEPS = [
     ("switches", "Switches"),
     ("gateways", "Gateways"),
     ("cable_tests", "Cable Tests"),
+    ("config_errors", "Config Command Errors"),
 ]
 
 
@@ -112,10 +113,10 @@ class _ProgressTracker:
     def set_execution_total(self, cable_test_ports: int) -> None:
         """Switch from discovery (indeterminate) to execution (determinate).
 
-        Execution-phase steps: aps, switches, gateways, cable_tests (N ports).
+        Execution-phase steps: aps, switches, gateways, cable_tests (N ports), config_errors.
         If cable_test_ports == 0, cable_tests still counts as 1 step.
         """
-        self.overall_total = 3 + max(cable_test_ports, 1)  # aps + switches + gateways + cable tests
+        self.overall_total = 4 + max(cable_test_ports, 1)  # aps + switches + gateways + cable tests + config errors
         self.overall_completed = 0
 
     async def complete_cable_test_port(self, message: str) -> None:
@@ -143,6 +144,7 @@ async def run_post_deployment_validation(
     cloud_region: str,
     org_id: str,
     include_cable_tests: bool = False,
+    include_config_errors: bool = False,
     progress_callback=None,
     token: str | None = None,
     cookies: dict | None = None,
@@ -345,6 +347,18 @@ async def run_post_deployment_validation(
             msg = "Skipped (opt-in)" if not include_cable_tests else "No cable test ports"
             await tracker.start_step("cable_tests", msg)
             await tracker.complete_step("cable_tests", msg)
+
+        # Step 9: Config command errors (opt-in)
+        if include_config_errors:
+            sw_gw_devices = result["switches"] + result["gateways"]
+            count = len(sw_gw_devices)
+            tracker.update_label("config_errors", f"Config Command Errors ({count} devices)")
+            await tracker.start_step("config_errors", f"Checking {count} devices...")
+            await _run_all_config_error_checks(session, site_id, sw_gw_devices, tracker)
+            await tracker.complete_step("config_errors", f"{count} devices checked")
+        else:
+            await tracker.start_step("config_errors", "Skipped (opt-in)")
+            await tracker.complete_step("config_errors", "Skipped (opt-in)")
 
         # Attach correlated events to each device
         _attach_device_events(result, events_by_mac)
@@ -1252,6 +1266,7 @@ def _validate_single_switch(sw: dict, config_events: dict[str, dict], fw_version
         "checks": checks,
         "virtual_chassis": vc_result,
         "cable_tests": [],
+        "config_errors": [],
     }
 
 
@@ -1433,6 +1448,51 @@ def _parse_cable_test_results(port_id: str, raw_messages: list) -> dict:
         "pairs": result["pairs"],
         "raw": [str(m) for m in raw_messages] if not result["pairs"] else [],
     }
+
+
+# ── Config command error checks ──────────────────────────────────────────
+
+
+async def _run_all_config_error_checks(
+    session: APISession,
+    site_id: str,
+    device_results: list[dict],
+    tracker: "_ProgressTracker",
+) -> None:
+    """Fetch config_cmd for each switch/gateway and attach any _errors to the device result."""
+    sem = asyncio.Semaphore(10)
+
+    async def _check_one_device(dev_result: dict) -> None:
+        device_id = dev_result.get("device_id", "")
+        name = dev_result.get("name", device_id)
+        if not device_id:
+            return
+        async with sem:
+            try:
+                resp = await mistapi.arun(devices.getSiteDeviceConfigCmd, session, site_id, device_id)
+                if resp.status_code == 200 and isinstance(resp.data, dict):
+                    errors = resp.data.get("_errors", [])
+                    if not isinstance(errors, list):
+                        errors = []
+                else:
+                    errors = None  # Unable to retrieve
+            except Exception as e:
+                logger.warning("config_cmd_failed device_id=%s error=%s", device_id, str(e))
+                errors = None
+
+        if errors is None:
+            dev_result["checks"].append({"check": "config_errors", "status": "info", "value": "Unable to retrieve"})
+        else:
+            dev_result["config_errors"] = errors
+            dev_result["checks"].append({
+                "check": "config_errors",
+                "status": "pass" if not errors else "warn",
+                "value": "No errors" if not errors else f"{len(errors)} error(s)",
+            })
+
+        await tracker.update_step("config_errors", f"Checked {name}")
+
+    await asyncio.gather(*[_check_one_device(d) for d in device_results])
 
 
 # ── Gateway validation ───────────────────────────────────────────────────
@@ -1911,6 +1971,7 @@ async def _validate_single_gateway(
         "lan_ports": lan_ports,
         "networks": gw_networks,
         "port_optics": port_optics,
+        "config_errors": [],
     }
 
 

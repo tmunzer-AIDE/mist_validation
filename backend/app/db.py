@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS reports (
     result TEXT,
     error TEXT,
     include_cable_tests INTEGER DEFAULT 0,
+    include_config_errors INTEGER DEFAULT 0,
     created_at TEXT NOT NULL,
     completed_at TEXT
 );
@@ -43,6 +44,12 @@ async def init_db() -> None:
         # Migration: add org_name column to existing databases
         try:
             await db.execute("ALTER TABLE reports ADD COLUMN org_name TEXT DEFAULT ''")
+            await db.commit()
+        except aiosqlite.OperationalError:
+            pass  # Column already exists
+        # Migration: add include_config_errors column to existing databases
+        try:
+            await db.execute("ALTER TABLE reports ADD COLUMN include_config_errors INTEGER DEFAULT 0")
             await db.commit()
         except aiosqlite.OperationalError:
             pass  # Column already exists
@@ -80,16 +87,17 @@ async def create_job(
     site_id: str,
     org_name: str = "",
     include_cable_tests: bool = False,
+    include_config_errors: bool = False,
 ) -> dict:
     """Insert a new report job and return it as a dict."""
     now = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute(
             """
-            INSERT INTO reports (id, mist_user_id, org_id, org_name, site_id, status, progress, include_cable_tests, created_at)
-            VALUES (?, ?, ?, ?, ?, 'pending', '{}', ?, ?)
+            INSERT INTO reports (id, mist_user_id, org_id, org_name, site_id, status, progress, include_cable_tests, include_config_errors, created_at)
+            VALUES (?, ?, ?, ?, ?, 'pending', '{}', ?, ?, ?)
             """,
-            (job_id, mist_user_id, org_id, org_name, site_id, int(include_cable_tests), now),
+            (job_id, mist_user_id, org_id, org_name, site_id, int(include_cable_tests), int(include_config_errors), now),
         )
         await db.commit()
     return {
@@ -104,6 +112,7 @@ async def create_job(
         "result": None,
         "error": None,
         "include_cable_tests": int(include_cable_tests),
+        "include_config_errors": int(include_config_errors),
         "created_at": now,
         "completed_at": None,
     }

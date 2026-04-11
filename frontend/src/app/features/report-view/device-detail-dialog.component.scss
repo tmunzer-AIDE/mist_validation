@@ -236,3 +236,18 @@ table {
 .status-info {
   color: var(--text-secondary);
 }
+
+// ── Config errors list ──
+
+.config-errors-list {
+  margin: 0;
+  padding: 0 0 0 16px;
+  list-style: disc;
+}
+
+.config-error-item {
+  font-size: 13px;
+  font-family: var(--font-mono);
+  padding: 2px 0;
+  line-height: 1.5;
+}

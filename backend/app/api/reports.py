@@ -39,6 +39,7 @@ def _job_to_response(job: dict) -> ReportResponse:
         result=job.get("result"),
         error=job.get("error"),
         include_cable_tests=bool(job.get("include_cable_tests", 0)),
+        include_config_errors=bool(job.get("include_config_errors", 0)),
         created_at=job.get("created_at", ""),
         completed_at=job.get("completed_at"),
     )
@@ -108,6 +109,7 @@ async def create_report(
         org_name=org_name,
         site_id=site_id,
         include_cable_tests=request.include_cable_tests,
+        include_config_errors=request.include_config_errors,
     )
 
     background_tasks.add_task(
@@ -117,6 +119,7 @@ async def create_report(
         cloud_region=session.mist_cloud,
         org_id=org_id,
         include_cable_tests=request.include_cable_tests,
+        include_config_errors=request.include_config_errors,
         progress_callback=_progress_callback,
         token=session.mist_token,
         cookies=session.mist_cookies,

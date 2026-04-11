@@ -43,6 +43,7 @@ interface ReportRow {
   status: string;
   created_at: string;
   include_cable_tests: boolean;
+  include_config_errors: boolean;
 }
 
 interface SitesResponse {
@@ -98,6 +99,7 @@ export class SiteSelectorComponent implements OnInit {
   orgSearchCtrl = this.fb.control('');
   siteSearchCtrl = this.fb.control({ value: '', disabled: true });
   cableTestsCtrl = this.fb.control(false);
+  configErrorsCtrl = this.fb.control(false);
 
   currentOrg = signal<{ id: string; name: string; role?: string } | null>(null);
   allSites = signal<Site[]>([]);
@@ -275,7 +277,7 @@ export class SiteSelectorComponent implements OnInit {
     this.api
       .post<StartReportResponse>(
         'reports',
-        { site_id: site.id, org_id: org.id, include_cable_tests: this.cableTestsCtrl.value },
+        { site_id: site.id, org_id: org.id, include_cable_tests: this.cableTestsCtrl.value, include_config_errors: this.configErrorsCtrl.value },
       )
       .subscribe({
         next: (res) => {

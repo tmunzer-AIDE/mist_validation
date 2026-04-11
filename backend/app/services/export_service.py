@@ -145,6 +145,16 @@ def _make_table(data: list[list], col_widths: list[float] | None = None) -> Tabl
     return table
 
 
+def _add_config_errors(elements: list, device: dict, normal_style) -> None:
+    """Add config command errors list to PDF elements if any exist."""
+    errors = device.get("config_errors", [])
+    if not errors:
+        return
+    elements.append(Paragraph(f"<b>Configuration Errors ({len(errors)})</b>", normal_style))
+    for err in errors:
+        elements.append(Paragraph(f"\u2022 <font color='#ff9800'>{_esc(err)}</font>", _CELL_STYLE))
+
+
 def _add_optics_table(elements: list, port_optics: list[dict], w: float) -> None:
     """Add an optics table + legend to the PDF elements list."""
     cw_op = [w * 0.12, w * 0.2, w * 0.14, w * 0.14, w * 0.14, w * 0.14, w * 0.12]
@@ -411,6 +421,8 @@ def generate_pdf(report) -> bytes:
                     ])
                 elements.append(_make_table(data, cw_ct))
 
+            _add_config_errors(elements, sw, normal_style)
+
             if sw.get("port_optics"):
                 _add_optics_table(elements, sw["port_optics"], w)
 
@@ -486,6 +498,8 @@ def generate_pdf(report) -> bytes:
                         detail = f"Servers: {', '.join(n['dhcp_relay_servers'])}"
                     data.append([_p(n.get("name", "")), _p(n.get("gateway_ip", "")), _p(n.get("dhcp_status", "")), _p(detail)])
                 elements.append(_make_table(data, cw_net))
+
+            _add_config_errors(elements, gw, normal_style)
 
             if gw.get("port_optics"):
                 _add_optics_table(elements, gw["port_optics"], w)
@@ -703,6 +717,22 @@ def generate_csv_zip(report) -> bytes:
                     "rx_power", "rx_power_status", "tx_power", "tx_power_status",
                     "temperature", "bias_current", "voltage",
                 ]))
+
+        # Config command errors (switches + gateways combined)
+        ce_rows: list[dict] = []
+        for dtype, dkey in [("switch", "switches"), ("gateway", "gateways")]:
+            for dev in result.get(dkey, []):
+                for err in dev.get("config_errors", []):
+                    ce_rows.append({
+                        "device_type": dtype,
+                        "device_name": dev.get("name", ""),
+                        "device_mac": dev.get("mac", ""),
+                        "error": err,
+                    })
+        if ce_rows:
+            zf.writestr("config_errors.csv", _dict_list_to_csv(ce_rows, [
+                "device_type", "device_name", "device_mac", "error",
+            ]))
 
         # Device events
         ev_rows: list[dict] = []

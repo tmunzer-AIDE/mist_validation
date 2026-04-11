@@ -64,6 +64,7 @@ export interface SwitchResult extends DeviceResult {
   cable_tests: CableTestResult[];
   lldp_neighbors: LldpNeighbor[];
   port_optics: PortOptics[];
+  config_errors: string[];
 }
 
 export interface ClusterMember {
@@ -102,6 +103,7 @@ export interface GatewayResult extends DeviceResult {
   lan_ports: LanPort[];
   networks: NetworkInfo[];
   port_optics: PortOptics[];
+  config_errors: string[];
 }
 
 export interface VcMember {

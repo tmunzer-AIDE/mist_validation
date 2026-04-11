@@ -407,6 +407,16 @@
                 }
               </td>
             </ng-container>
+            <ng-container matColumnDef="config_errors">
+              <th mat-header-cell *matHeaderCellDef>Cfg Errors</th>
+              <td mat-cell *matCellDef="let r">
+                @if (r.config_errors?.length) {
+                  <span class="mono status-warn">{{ r.config_errors.length }} error(s)</span>
+                } @else {
+                  <span class="text-tertiary">—</span>
+                }
+              </td>
+            </ng-container>
             <ng-container matColumnDef="optics">
               <th mat-header-cell *matHeaderCellDef>Optics</th>
               <td mat-cell *matCellDef="let r">
@@ -516,6 +526,16 @@
                 <span [class]="'status-' + getCheckStatus(r.checks, 'lan_port_status')">
                   {{ getCheckValue(r.checks, 'lan_port_status') || '—' }}
                 </span>
+              </td>
+            </ng-container>
+            <ng-container matColumnDef="config_errors">
+              <th mat-header-cell *matHeaderCellDef>Cfg Errors</th>
+              <td mat-cell *matCellDef="let r">
+                @if (r.config_errors?.length) {
+                  <span class="mono status-warn">{{ r.config_errors.length }} error(s)</span>
+                } @else {
+                  <span class="text-tertiary">—</span>
+                }
               </td>
             </ng-container>
             <ng-container matColumnDef="optics">

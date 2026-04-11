@@ -95,6 +95,17 @@
         </div>
       }
 
+      <!-- Config command errors -->
+      <mat-checkbox [formControl]="configErrorsCtrl">
+        Include config command errors
+      </mat-checkbox>
+      @if (selectedSite() && configErrorsCtrl.value) {
+        <div class="cable-warn">
+          <mat-icon style="font-size:14px;width:24px;height:14px;">warning</mat-icon>
+          Config command errors require one API call per switch and gateway.
+        </div>
+      }
+
       @if (startError()) {
         <div class="error-msg">{{ startError() }}</div>
       }
