@@ -331,8 +331,8 @@ export class SiteSelectorComponent implements OnInit {
           this.orgBudget.set(budget);
           this.budgetLoading.set(false);
           if (!budget.config_errors_allowed) {
-            this.configErrorsCtrl.setValue(false);
-            this.configErrorsCtrl.disable();
+            this.configErrorsCtrl.setValue(false, { emitEvent: false });
+            this.configErrorsCtrl.disable({ emitEvent: false });
           } else {
             this.configErrorsCtrl.enable();
           }
