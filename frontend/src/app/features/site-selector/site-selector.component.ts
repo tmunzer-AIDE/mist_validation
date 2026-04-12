@@ -334,7 +334,7 @@ export class SiteSelectorComponent implements OnInit {
             this.configErrorsCtrl.setValue(false, { emitEvent: false });
             this.configErrorsCtrl.disable({ emitEvent: false });
           } else {
-            this.configErrorsCtrl.enable();
+            this.configErrorsCtrl.enable({ emitEvent: false });
           }
         },
         error: () => {

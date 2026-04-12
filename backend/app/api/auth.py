@@ -50,24 +50,31 @@ async def list_clouds():
     return get_cloud_list()
 
 
-def _set_session_cookie(response: JSONResponse, session_id: str) -> None:
+def _is_secure_request(request: Request) -> bool:
+    """Detect if the original client connection is HTTPS (direct or behind proxy)."""
+    if request.url.scheme == "https":
+        return True
+    return request.headers.get("x-forwarded-proto") == "https"
+
+
+def _set_session_cookie(response: JSONResponse, session_id: str, secure: bool = True) -> None:
     response.set_cookie(
         key=SESSION_COOKIE,
         value=session_id,
         httponly=True,
-        secure=True,
-        samesite="lax",
+        secure=secure,
+        samesite="lax" if secure else "lax",
         path="/",
         max_age=SESSION_MAX_AGE,
     )
 
 
-def _clear_session_cookie(response: JSONResponse) -> None:
+def _clear_session_cookie(response: JSONResponse, secure: bool = True) -> None:
     response.delete_cookie(
         key=SESSION_COOKIE,
         path="/",
         httponly=True,
-        secure=True,
+        secure=secure,
         samesite="lax",
     )
 
@@ -141,7 +148,7 @@ async def login(request: LoginRequest, req: Request):
                 "orgs": user_data["orgs"],
             }
             response = JSONResponse(content=body)
-            _set_session_cookie(response, sess_id)
+            _set_session_cookie(response, sess_id, secure=_is_secure_request(req))
             return response
 
         elif request.email and request.password:
@@ -199,7 +206,7 @@ async def login(request: LoginRequest, req: Request):
                 "orgs": user_data["orgs"],
             }
             response = JSONResponse(content=body)
-            _set_session_cookie(response, sess_id)
+            _set_session_cookie(response, sess_id, secure=_is_secure_request(req))
             return response
 
         else:
@@ -231,12 +238,12 @@ async def get_session(session_id: str = Cookie(default="")):
 
 
 @router.post("/auth/logout")
-async def logout(session_id: str = Cookie(default="")):
+async def logout(req: Request, session_id: str = Cookie(default="")):
     """Destroy session and clear cookie."""
     if session_id:
         session_store.delete(session_id)
     response = JSONResponse(content={"ok": True})
-    _clear_session_cookie(response)
+    _clear_session_cookie(response, secure=_is_secure_request(req))
     return response
 
 
