@@ -204,7 +204,7 @@
           </button>
         </div>
         <div class="na-list">
-          @for (f of findings().slice(0, 5); track f.device.device_id) {
+          @for (f of findings(); track f.device.device_id) {
             <button
               class="na-row"
               type="button"
