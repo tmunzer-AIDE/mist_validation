@@ -31,7 +31,7 @@
       </div>
       <div class="kv">
         <div class="kv-label">Firmware running</div>
-        <div class="kv-value mono" [class]="'status-' + getCheckStatus('firmware_version')">
+        <div class="kv-value mono status-{{ getCheckStatus('firmware_version') }}">
           {{ getCheckValue('firmware_version') || '—' }}
         </div>
       </div>
@@ -50,7 +50,7 @@
       @if (data.type === 'ap' && getCheckValue('power_constrained')) {
         <div class="kv">
           <div class="kv-label">PoE</div>
-          <div class="kv-value" [class]="'status-' + getCheckStatus('power_constrained')">
+          <div class="kv-value status-{{ getCheckStatus('power_constrained') }}">
             {{ getCheckValue('power_constrained') }}
           </div>
         </div>
@@ -187,7 +187,7 @@
       <td mat-cell *matCellDef="let r" class="pairs-cell">
         @if (r.pairs?.length) {
         @for (p of r.pairs; track p.pair) {
-        <div class="pair-chip" [class]="pairClass(p.status)">
+        <div class="pair-chip {{ pairClass(p.status) }}">
           {{ p.pair }}: {{ p.status }} ({{ p.length }})
         </div>
         }

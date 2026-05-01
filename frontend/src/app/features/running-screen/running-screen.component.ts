@@ -28,7 +28,12 @@ interface RunningReport {
   site_name: string;
   status: string;
   created_at: string;
-  progress: { overall_completed: number; overall_total: number; steps: ProgressStep[] };
+  progress: {
+    overall_completed: number;
+    overall_total: number;
+    steps: ProgressStep[];
+    eta_seconds?: number;
+  };
 }
 
 // Map step IDs to phase labels (covers both site and org reports).
@@ -142,12 +147,29 @@ export class RunningScreenComponent implements OnInit, OnDestroy {
     return Math.max(0, Math.floor((this.now() - start) / 1000));
   });
 
+  // Re-anchor only when eta_seconds itself changes. The parent polls the report API
+  // every 5s and re-sets `report()` even when no WS broadcast has fired, which would
+  // otherwise reset capturedAt to "now" with the stale persisted eta_seconds — making
+  // the displayed countdown bounce back up every 5s instead of decreasing. With the
+  // equal comparator, an unchanged eta_seconds keeps the original anchor so the
+  // timer-driven countdown ticks down cleanly between real WS updates.
+  private etaAnchor = computed<{ seconds: number | null; capturedAt: number }>(
+    () => {
+      const eta = this.report().progress?.eta_seconds;
+      return {
+        seconds: typeof eta === 'number' ? eta : null,
+        capturedAt: Date.now(),
+      };
+    },
+    { equal: (a, b) => a.seconds === b.seconds },
+  );
+
   etaSeconds = computed<number | null>(() => {
     if (this.isComplete()) return null;
-    const pct = this.progressPercent();
-    if (pct < 1) return null;
-    const elapsed = this.elapsedSeconds();
-    return Math.max(0, Math.floor((elapsed / pct) * (100 - pct)));
+    const anchor = this.etaAnchor();
+    if (anchor.seconds === null) return null;
+    const drift = Math.floor((this.now() - anchor.capturedAt) / 1000);
+    return Math.max(0, anchor.seconds - drift);
   });
 
   fmtTime(sec: number): string {

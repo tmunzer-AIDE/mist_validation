@@ -82,7 +82,12 @@ interface ReportResponse {
   site_name: string;
   scope: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
-  progress: { overall_completed: number; overall_total: number; steps: ProgressStep[] };
+  progress: {
+    overall_completed: number;
+    overall_total: number;
+    steps: ProgressStep[];
+    eta_seconds?: number | null;
+  };
   result: ReportResult | null;
   error: string | null;
   include_cable_tests: boolean;
@@ -582,6 +587,7 @@ export class ReportViewComponent implements OnInit, OnDestroy {
           overall_completed?: number;
           overall_total?: number;
           steps?: ProgressStep[];
+          eta_seconds?: number | null;
         };
         if (current && data) {
           this.report.set({
@@ -591,6 +597,7 @@ export class ReportViewComponent implements OnInit, OnDestroy {
               overall_completed: data.overall_completed ?? current.progress?.overall_completed ?? 0,
               overall_total: data.overall_total ?? current.progress?.overall_total ?? 0,
               steps: data.steps ?? current.progress?.steps ?? [],
+              eta_seconds: data.eta_seconds,
             },
           });
         }
