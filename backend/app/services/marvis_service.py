@@ -269,7 +269,7 @@ async def _trigger_test(session: Any, site_id: str) -> tuple[str | None, str | N
     """POST /api/v1/sites/{site_id}/synthetic_test → (test_id, error).
 
     `mist_post`/`mist_get` are synchronous in the mistapi SDK, so they're
-    wrapped with asyncio.to_thread.
+    awaited via `mistapi.arun`, which dispatches them to a thread executor.
     """
     uri = f"/api/v1/sites/{site_id}/synthetic_test"
     try:
