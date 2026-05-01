@@ -209,5 +209,38 @@ export class ValidationReferenceComponent {
         },
       ],
     },
+    {
+      category: 'Synthetic tests (Marvis Minis)',
+      checks: [
+        {
+          name: 'Marvis Minis — DHCP',
+          scope: 'Per AP × VLAN — opt-in',
+          pass: 'DHCP lease obtained',
+          warn: '—',
+          fail: 'DHCP unresponsive or rejected',
+        },
+        {
+          name: 'Marvis Minis — ARP',
+          scope: 'Per AP × VLAN — opt-in',
+          pass: 'ARP resolved gateway MAC',
+          warn: '—',
+          fail: 'ARP timed out or no entry',
+        },
+        {
+          name: 'Marvis Minis — DNS',
+          scope: 'Per AP × VLAN — opt-in',
+          pass: 'All test URLs resolved',
+          warn: '—',
+          fail: 'One or more URLs failed to resolve',
+        },
+        {
+          name: 'Marvis Minis — CURL',
+          scope: 'Per AP × VLAN — opt-in',
+          pass: 'All target URLs returned a 2xx/3xx',
+          warn: '—',
+          fail: 'One or more URLs unreachable',
+        },
+      ],
+    },
   ];
 }
