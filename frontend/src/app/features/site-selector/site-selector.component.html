@@ -5,7 +5,46 @@
   [userLabel]="authInfo().user_email || authInfo().token_name || 'API Token'"
   (navigate)="onShellNavigate($event)"
 >
-  @if (authInfo().orgs.length > 1) {
+  @if (!currentOrg() && authInfo().orgs.length > 1) {
+    <!-- Landing: org picker is mandatory before anything else -->
+    <div class="mv-card org-landing">
+      <div class="org-landing-head">
+        <div class="org-landing-icon">
+          <mat-icon>corporate_fare</mat-icon>
+        </div>
+        <div>
+          <h2 class="org-landing-title">Select an organization</h2>
+          <p class="org-landing-sub">
+            Pick the organization you want to validate. You can switch later from the top bar.
+          </p>
+        </div>
+      </div>
+      <div class="org-landing-search">
+        <mat-icon class="search-icon">search</mat-icon>
+        <input
+          class="mv-input"
+          type="text"
+          [formControl]="orgSearchCtrl"
+          placeholder="Search organizations…"
+          autofocus
+        />
+      </div>
+      <div class="org-landing-list">
+        @for (org of filteredOrgs(); track org.id) {
+          <button type="button" class="org-landing-item" (click)="onOrgSelected(org)">
+            <mat-icon class="oli-icon">corporate_fare</mat-icon>
+            <span class="oli-name">{{ org.name }}</span>
+            @if (org.role) {
+              <span class="role-pill">{{ org.role }}</span>
+            }
+            <mat-icon class="oli-chevron">chevron_right</mat-icon>
+          </button>
+        } @empty {
+          <div class="org-landing-empty">No organizations match “{{ orgSearchCtrl.value }}”.</div>
+        }
+      </div>
+    </div>
+  } @else if (authInfo().orgs.length > 1) {
     <div class="org-bar">
       <span class="ob-label">Organization</span>
       <input
@@ -27,6 +66,7 @@
     </div>
   }
 
+  @if (currentOrg()) {
   <!-- Org header + mode tabs card -->
   <div class="mv-card org-card">
     <div class="org-header">
@@ -389,4 +429,5 @@
       </div>
     }
   </div>
+  }
 </app-page-shell>

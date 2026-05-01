@@ -285,6 +285,10 @@ export class SiteSelectorComponent implements OnInit {
 
   onOrgSelected(org: { id: string; name: string }): void {
     this.currentOrg.set(org);
+    // Sync the form control so the topbar autocomplete (which reuses orgSearchCtrl)
+    // shows the org name via displayOrg, instead of the search string the user typed
+    // when picking from the landing list.
+    this.orgSearchCtrl.setValue(org as never);
     this.orgSelected.emit(org);
     this.loadSites(org);
     this.fetchBudget();
