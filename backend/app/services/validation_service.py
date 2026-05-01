@@ -2576,6 +2576,7 @@ async def check_site_api_budget(
     site_id: str,
     include_config_errors: bool = False,
     include_cable_tests: bool = False,
+    include_marvis_minis: bool = False,
 ) -> dict:
     """Pre-flight check: estimate API call budget for a single-site report."""
     from math import ceil
@@ -2624,13 +2625,15 @@ async def check_site_api_budget(
     #   per gateway: stats + optics + ports (~3)
     #   cable tests: ~4 calls per switch (TDR runs)
     #   config errors: 1 call per (switch + gateway)
+    #   marvis minis: 1 trigger + ~32 polls (15s × 8 + 5s × 24 ≈ 4 min wall-clock)
     base_calls = 10
     pagination = ceil(total / 1000) * 2 if total > 0 else 0
     per_device_calls = n_ap + n_sw * 2 + n_gw * 3
     cable_test_calls = n_sw * 4 if include_cable_tests else 0
     config_error_calls = (n_sw + n_gw) if include_config_errors else 0
+    marvis_calls = 33 if include_marvis_minis else 0
 
-    estimated_base = base_calls + pagination + per_device_calls + cable_test_calls
+    estimated_base = base_calls + pagination + per_device_calls + cable_test_calls + marvis_calls
     estimated_total = estimated_base + config_error_calls
     required = int(estimated_total * 1.15)
 

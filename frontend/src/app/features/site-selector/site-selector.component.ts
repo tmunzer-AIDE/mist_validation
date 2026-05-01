@@ -264,6 +264,9 @@ export class SiteSelectorComponent implements OnInit {
     this.cableTestsCtrl.valueChanges
       .pipe(takeUntilDestroyed())
       .subscribe(() => this.fetchBudget());
+    this.marvisMinisCtrl.valueChanges
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => this.fetchBudget());
   }
 
   ngOnInit(): void {
@@ -365,6 +368,7 @@ export class SiteSelectorComponent implements OnInit {
       }
       params.set('site_id', site.id);
       params.set('include_cable_tests', String(!!this.cableTestsCtrl.value));
+      params.set('include_marvis_minis', String(!!this.marvisMinisCtrl.value));
     }
 
     this.budgetLoading.set(true);
