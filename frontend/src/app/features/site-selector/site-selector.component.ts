@@ -102,6 +102,7 @@ export class SiteSelectorComponent implements OnInit {
   siteSearchCtrl = this.fb.nonNullable.control('');
   cableTestsCtrl = this.fb.control(false);
   configErrorsCtrl = this.fb.control(false);
+  marvisMinisCtrl = this.fb.control(false);
 
   currentOrg = signal<{ id: string; name: string; role?: string } | null>(null);
   allSites = signal<Site[]>([]);
@@ -209,6 +210,17 @@ export class SiteSelectorComponent implements OnInit {
     return '';
   });
 
+  marvisMinisAllowed = computed(() => {
+    return this.canWriteOrg();
+  });
+
+  marvisMinisDisabledReason = computed(() => {
+    if (!this.canWriteOrg()) {
+      return 'Marvis Minis requires write access. Your role for this organization is read-only.';
+    }
+    return '';
+  });
+
   budgetPct = computed(() => {
     const b = this.budget();
     if (!b) return 0;
@@ -234,6 +246,15 @@ export class SiteSelectorComponent implements OnInit {
         this.cableTestsCtrl.disable({ emitEvent: false });
       } else {
         this.cableTestsCtrl.enable({ emitEvent: false });
+      }
+    });
+
+    effect(() => {
+      if (!this.marvisMinisAllowed()) {
+        this.marvisMinisCtrl.setValue(false, { emitEvent: false });
+        this.marvisMinisCtrl.disable({ emitEvent: false });
+      } else {
+        this.marvisMinisCtrl.enable({ emitEvent: false });
       }
     });
 
@@ -314,8 +335,11 @@ export class SiteSelectorComponent implements OnInit {
     if (newScope === 'org') {
       this.cableTestsCtrl.setValue(false, { emitEvent: false });
       this.cableTestsCtrl.disable({ emitEvent: false });
+      this.marvisMinisCtrl.setValue(false, { emitEvent: false });
+      this.marvisMinisCtrl.disable({ emitEvent: false });
     } else {
       if (this.cableTestsAllowed()) this.cableTestsCtrl.enable({ emitEvent: false });
+      if (this.marvisMinisAllowed()) this.marvisMinisCtrl.enable({ emitEvent: false });
     }
     this.fetchBudget();
   }
@@ -383,6 +407,7 @@ export class SiteSelectorComponent implements OnInit {
     if (!isOrg) {
       body['site_id'] = this.selectedSite()!.id;
       body['include_cable_tests'] = this.cableTestsCtrl.value;
+      body['include_marvis_minis'] = this.marvisMinisCtrl.value;
     }
 
     this.api.post<StartReportResponse>('reports', body).subscribe({
