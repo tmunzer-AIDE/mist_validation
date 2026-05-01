@@ -829,6 +829,51 @@ def generate_csv_zip(report) -> bytes:
                 "sub_id", "status", "trigger_count", "clear_count", "last_change",
             ]))
 
+        # ── Marvis Minis ──
+        marvis = result.get("marvis_minis")
+        mm_rows: list[dict] = []
+        if isinstance(marvis, dict) and marvis.get("status") == "completed":
+            for ap in marvis.get("ap_results", []):
+                if not isinstance(ap, dict):
+                    continue
+                ap_meta = {
+                    "ap_name": ap.get("ap_name", ""),
+                    "ap_mac": ap.get("ap_mac", ""),
+                    "switch_name": ap.get("switch_name", ""),
+                    "switch_port": ap.get("switch_port", ""),
+                }
+                for vlan in ap.get("vlans", []):
+                    if not isinstance(vlan, dict):
+                        continue
+                    has_pcap = "true" if vlan.get("has_pcap") else "false"
+                    tests = vlan.get("tests", []) or []
+                    if not tests:
+                        mm_rows.append({
+                            **ap_meta,
+                            "vlan": vlan.get("vlan", ""),
+                            "test_type": "",
+                            "status": "not_tested",
+                            "summary": "",
+                            "has_pcap": has_pcap,
+                        })
+                        continue
+                    for test in tests:
+                        if not isinstance(test, dict):
+                            continue
+                        mm_rows.append({
+                            **ap_meta,
+                            "vlan": vlan.get("vlan", ""),
+                            "test_type": test.get("test_type", ""),
+                            "status": test.get("status", ""),
+                            "summary": test.get("summary", ""),
+                            "has_pcap": has_pcap,
+                        })
+        # Always emit the file (even if empty / not run) so consumers can rely on its presence
+        zf.writestr("marvis_minis.csv", _dict_list_to_csv(mm_rows, [
+            "ap_name", "ap_mac", "switch_name", "switch_port",
+            "vlan", "test_type", "status", "summary", "has_pcap",
+        ]))
+
     return buf.getvalue()
 
 
