@@ -535,6 +535,68 @@ def generate_pdf(report) -> bytes:
         elements.append(_make_table(data, cw))
         elements.append(Spacer(1, 0.3 * cm))
 
+    # ── Marvis Minis ──
+    marvis = result.get("marvis_minis")
+    if isinstance(marvis, dict) and marvis.get("status") == "completed":
+        elements.append(Paragraph("Marvis Minis Synthetic Tests", heading_style))
+        s = marvis.get("summary", {})
+        summary_line = (
+            f"<b>{s.get('pass', 0)}</b> pass · <b>{s.get('fail', 0)}</b> fail · "
+            f"<b>{s.get('warn', 0)}</b> warn · duration {marvis.get('duration_seconds', 0)}s"
+        )
+        elements.append(Paragraph(summary_line, normal_style))
+        elements.append(Spacer(1, 0.3 * cm))
+
+        for ap in marvis.get("ap_results", []):
+            ap_title = (
+                f"<b>{_esc(ap.get('ap_name') or '(unnamed)')}</b> — "
+                f"{_esc(ap.get('switch_name', '?'))}/{_esc(ap.get('switch_port', '?'))}"
+            )
+            elements.append(Paragraph(ap_title, normal_style))
+            elements.append(Spacer(1, 0.1 * cm))
+
+            header = [_ph("VLAN"), _ph("DHCP"), _ph("ARP"), _ph("DNS"), _ph("CURL")]
+            data: list = [header]
+            row_status_colors: list[list] = [[None] * 5]
+            for vlan in ap.get("vlans", []):
+                row = [_p(str(vlan.get("vlan", "?")))]
+                color_row: list = [None]
+                tests_by_type = {t.get("test_type"): t for t in vlan.get("tests", [])}
+                for tt in ("DHCP", "ARP", "DNS", "CURL"):
+                    test = tests_by_type.get(tt)
+                    if not test:
+                        row.append(_p("—"))
+                        color_row.append(None)
+                        continue
+                    status = test.get("status", "info")
+                    row.append(_p(_esc(test.get("summary", status))))
+                    color_row.append({
+                        "pass": colors.HexColor("#dff5e2"),
+                        "fail": colors.HexColor("#fde2e1"),
+                        "warn": colors.HexColor("#fff4d6"),
+                    }.get(status))
+                data.append(row)
+                row_status_colors.append(color_row)
+
+            w = _PAGE_WIDTH
+            cw = [w * 0.10, w * 0.225, w * 0.225, w * 0.225, w * 0.225]
+            tbl = Table(data, colWidths=cw)
+            extra_styles: list = []
+            for r_idx, color_row in enumerate(row_status_colors):
+                for c_idx, color in enumerate(color_row):
+                    if color is not None:
+                        extra_styles.append(("BACKGROUND", (c_idx, r_idx), (c_idx, r_idx), color))
+            tbl.setStyle(TableStyle(_BASE_TABLE_STYLE + extra_styles))
+            elements.append(tbl)
+            elements.append(Spacer(1, 0.3 * cm))
+
+    elif isinstance(marvis, dict) and marvis.get("status") in ("trigger_failed", "timeout"):
+        elements.append(Paragraph("Marvis Minis Synthetic Tests", heading_style))
+        msg = marvis.get("trigger_error") or f"Test {marvis.get('status')} after {marvis.get('duration_seconds', 0)}s"
+        elements.append(Paragraph(f"<b>Status:</b> {_esc(str(marvis.get('status', '')))}", normal_style))
+        elements.append(Paragraph(f"<b>Reason:</b> {_esc(str(msg))}", normal_style))
+        elements.append(Spacer(1, 0.3 * cm))
+
     doc.build(elements)
     return buf.getvalue()
 
