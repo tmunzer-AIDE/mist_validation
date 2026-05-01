@@ -24,14 +24,14 @@
     </div>
     <nav class="project-links">
       @if (githubUrl(); as url) {
-        <a class="project-link" [href]="url" target="_blank" rel="noreferrer">
+        <a class="project-link" [href]="url" target="_blank" rel="noopener noreferrer">
           <mat-icon>code</mat-icon>
           GitHub
           <mat-icon class="ext">open_in_new</mat-icon>
         </a>
       }
       @if (dockerUrl(); as url) {
-        <a class="project-link" [href]="url" target="_blank" rel="noreferrer">
+        <a class="project-link" [href]="url" target="_blank" rel="noopener noreferrer">
           <mat-icon>inventory_2</mat-icon>
           Docker
           <mat-icon class="ext">open_in_new</mat-icon>
@@ -158,13 +158,13 @@
     <span>Open-source · MIT-licensed · Community-supported</span>
     <span class="foot-links">
       @if (githubUrl(); as url) {
-        <a [href]="url" target="_blank" rel="noreferrer">Source</a>
+        <a [href]="url" target="_blank" rel="noopener noreferrer">Source</a>
       }
       @if (githubUrl()) {
-        <a [href]="githubUrl() + '/issues'" target="_blank" rel="noreferrer">Issues</a>
+        <a [href]="githubUrl() + '/issues'" target="_blank" rel="noopener noreferrer">Issues</a>
       }
       @if (dockerUrl(); as url) {
-        <a [href]="url" target="_blank" rel="noreferrer">Docker Hub</a>
+        <a [href]="url" target="_blank" rel="noopener noreferrer">Docker Hub</a>
       }
     </span>
   </footer>

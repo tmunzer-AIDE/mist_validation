@@ -43,14 +43,14 @@
 
     <div class="sidebar-foot">
       @if (githubUrl(); as url) {
-        <a class="nav-link external" [href]="url" target="_blank" rel="noreferrer">
+        <a class="nav-link external" [href]="url" target="_blank" rel="noopener noreferrer">
           <mat-icon>code</mat-icon>
           <span>GitHub</span>
           <mat-icon class="ext-icon">open_in_new</mat-icon>
         </a>
       }
       @if (dockerUrl(); as url) {
-        <a class="nav-link external" [href]="url" target="_blank" rel="noreferrer">
+        <a class="nav-link external" [href]="url" target="_blank" rel="noopener noreferrer">
           <mat-icon>inventory_2</mat-icon>
           <span>Docker Hub</span>
           <mat-icon class="ext-icon">open_in_new</mat-icon>

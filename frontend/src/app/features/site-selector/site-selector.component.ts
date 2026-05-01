@@ -227,7 +227,10 @@ export class SiteSelectorComponent implements OnInit {
   constructor() {
     effect(() => {
       if (!this.cableTestsAllowed()) {
-        this.cableTestsCtrl.setValue(false);
+        // emitEvent: false avoids triggering valueChanges → fetchBudget(); the
+        // caller that flipped cableTestsAllowed (site change, role change) already
+        // calls fetchBudget() explicitly, so a second request here is redundant.
+        this.cableTestsCtrl.setValue(false, { emitEvent: false });
         this.cableTestsCtrl.disable({ emitEvent: false });
       } else {
         this.cableTestsCtrl.enable({ emitEvent: false });
