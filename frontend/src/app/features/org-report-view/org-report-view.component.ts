@@ -60,6 +60,7 @@ interface OrgReportResponse {
   error: string | null;
   include_cable_tests: boolean;
   include_config_errors: boolean;
+  include_marvis_minis: boolean;
   created_at: string;
   completed_at: string | null;
 }
@@ -470,6 +471,7 @@ export class OrgReportViewComponent implements OnInit, OnDestroy {
       error: null,
       include_cable_tests: r.include_cable_tests,
       include_config_errors: r.include_config_errors,
+      include_marvis_minis: false,  // Marvis is site-scope only; org sub-reports never have it
       created_at: r.created_at,
       completed_at: r.completed_at,
     });

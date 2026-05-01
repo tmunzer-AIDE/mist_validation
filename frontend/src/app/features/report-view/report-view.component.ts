@@ -100,6 +100,7 @@ interface ReportResponse {
   error: string | null;
   include_cable_tests: boolean;
   include_config_errors: boolean;
+  include_marvis_minis: boolean;
   created_at: string;
   completed_at: string | null;
 }

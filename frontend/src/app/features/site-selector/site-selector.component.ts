@@ -39,6 +39,7 @@ interface ReportRow {
   created_at: string;
   include_cable_tests: boolean;
   include_config_errors: boolean;
+  include_marvis_minis: boolean;
 }
 
 interface BudgetInfo {
