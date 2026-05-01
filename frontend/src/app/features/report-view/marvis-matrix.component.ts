@@ -75,7 +75,20 @@ export class MarvisMatrixComponent {
         if (v.vlan !== null && v.vlan !== undefined) ids.add(v.vlan);
       }
     }
-    return Array.from(ids).sort((a, b) => Number(a) - Number(b));
+    // Numeric VLAN IDs sort numerically. Non-numeric tokens (e.g. "untagged",
+    // "native") would produce NaN under Number() and destabilize the order;
+    // fall back to lexicographic for those, with non-numerics grouped after
+    // numerics so the common case is unaffected.
+    return Array.from(ids).sort((a, b) => {
+      const an = Number(a);
+      const bn = Number(b);
+      const aNum = !Number.isNaN(an);
+      const bNum = !Number.isNaN(bn);
+      if (aNum && bNum) return an - bn;
+      if (aNum) return -1;
+      if (bNum) return 1;
+      return String(a).localeCompare(String(b));
+    });
   });
 
   vlanByAp(ap: MarvisAp, vlanId: number | string): MarvisVlan | null {
@@ -97,7 +110,7 @@ export class MarvisMatrixComponent {
 
   cellTooltip(ap: MarvisAp, vlanId: number | string): string {
     const vlan = this.vlanByAp(ap, vlanId);
-    if (!vlan) return `VLAN ${vlanId} · waiting…`;
+    if (!vlan) return `VLAN ${vlanId} · ${this.live() ? 'waiting…' : 'not tested'}`;
     if (!vlan.tests.length) return `VLAN ${vlanId} · not tested`;
     const failures = vlan.tests.filter((t) => t.status === 'fail').map((t) => t.test_type);
     if (failures.length) return `VLAN ${vlanId} · failed: ${failures.join(', ')}`;
@@ -113,6 +126,13 @@ export class MarvisMatrixComponent {
     const vlan = this.vlanByAp(ap, vlanId);
     if (!vlan || !vlan.tests.length) return;  // inert for not_tested / missing
     this.cellClick.emit({ ap, vlan });
+  }
+
+  // True when a cell has actionable content (a drawer-worthy result).
+  // `not_tested`, `pending`, and `info` cells are inert — no drawer to open.
+  isCellClickable(ap: MarvisAp, vlanId: number | string): boolean {
+    const s = this.cellStatus(ap, vlanId);
+    return s !== 'not_tested' && s !== 'pending' && s !== 'info';
   }
 
   iconFor(status: MarvisCellStatus): string {

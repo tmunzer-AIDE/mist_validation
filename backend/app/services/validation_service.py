@@ -228,10 +228,14 @@ class _ProgressTracker:
             and not marvis_active
         ):
             return None
+        # Only `pending` and `running` steps still contribute to the ETA.
+        # `completed` and `failed` are both terminal — a Marvis trigger_failed,
+        # for example, should immediately drop its ~33-call budget from the
+        # countdown so the UI clock can reach 0 cleanly.
         api_remaining = sum(
             self._step_api_cost.get(sid, 0)
             for sid, step in self.steps.items()
-            if step["status"] != "completed"
+            if step["status"] in ("pending", "running")
         )
         cable_remaining = 0
         cable_status = self.steps.get("cable_tests", {}).get("status")

@@ -28,9 +28,14 @@
             @for (vid of vlanIds(); track vid) {
               <td
                 class="vlan-cell status-{{ cellStatus(ap, vid) }}"
-                [class.clickable]="cellStatus(ap, vid) !== 'not_tested' && cellStatus(ap, vid) !== 'pending' && cellStatus(ap, vid) !== 'info'"
+                [class.clickable]="isCellClickable(ap, vid)"
+                [attr.role]="isCellClickable(ap, vid) ? 'button' : null"
+                [attr.tabindex]="isCellClickable(ap, vid) ? 0 : null"
+                [attr.aria-label]="cellTooltip(ap, vid)"
                 [matTooltip]="cellTooltip(ap, vid)"
                 (click)="onCellClick(ap, vid)"
+                (keydown.enter)="onCellClick(ap, vid)"
+                (keydown.space)="$event.preventDefault(); onCellClick(ap, vid)"
               >
                 @if (cellStatus(ap, vid) === 'pending') {
                   <mat-spinner diameter="16"></mat-spinner>

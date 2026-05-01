@@ -1,10 +1,12 @@
 """
 Marvis Minis synthetic-test service.
 
-Public entry point: `run_marvis_minis`. Trigger and poll loop are added in a
-later task; this module currently exposes the pure parsing + scoring helpers
-that convert a raw `test_details` API response into the report schema described
-in docs/superpowers/specs/2026-05-01-marvis-minis-design.md §5.
+Public entry point: `run_marvis_minis` — triggers a Mist Marvis Minis
+synthetic test, polls for snapshot results with an adaptive 15s/5s cadence,
+parses each snapshot's `test_details` payload into the report schema described
+in docs/superpowers/specs/2026-05-01-marvis-minis-design.md §5, scores it for
+the site summary, and broadcasts a `marvis_progress` WS event after every
+poll. Hard 8-min timeout and 3-strikes consecutive-poll-error degraded mode.
 """
 
 from __future__ import annotations

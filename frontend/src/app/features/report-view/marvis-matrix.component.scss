@@ -76,6 +76,11 @@ td.vlan-cell {
     &:hover {
       background: var(--surface-2);
     }
+
+    &:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
+    }
   }
 
   &.status-pass mat-icon { color: #2f9e44; }
