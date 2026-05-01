@@ -44,17 +44,17 @@
   gap: 8px;
   padding: 8px 12px;
   border-radius: 6px;
-  background: var(--warn-soft);
-  color: var(--warn-strong);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
   text-decoration: none;
   font-weight: 600;
   font-size: 13px;
   width: fit-content;
-  border: 1px solid var(--warn);
+  border: 1px solid var(--accent);
 
   &:hover {
-    background: var(--warn);
-    color: var(--surface);
+    background: var(--accent);
+    color: var(--accent-fg);
   }
 }
 
