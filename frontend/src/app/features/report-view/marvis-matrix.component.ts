@@ -123,8 +123,9 @@ export class MarvisMatrixComponent {
   }
 
   onCellClick(ap: MarvisAp, vlanId: number | string): void {
+    if (!this.isCellClickable(ap, vlanId)) return;
     const vlan = this.vlanByAp(ap, vlanId);
-    if (!vlan || !vlan.tests.length) return;  // inert for not_tested / missing
+    if (!vlan || !vlan.tests.length) return;
     this.cellClick.emit({ ap, vlan });
   }
 
