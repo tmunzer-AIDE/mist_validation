@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS reports (
     error TEXT,
     include_cable_tests INTEGER DEFAULT 0,
     include_config_errors INTEGER DEFAULT 0,
+    include_marvis_minis INTEGER DEFAULT 0,
     scope TEXT DEFAULT 'site',
     created_at TEXT NOT NULL,
     completed_at TEXT
@@ -57,6 +58,12 @@ async def init_db() -> None:
         # Migration: add scope column to existing databases
         try:
             await db.execute("ALTER TABLE reports ADD COLUMN scope TEXT DEFAULT 'site'")
+            await db.commit()
+        except aiosqlite.OperationalError:
+            pass  # Column already exists
+        # Migration: add include_marvis_minis column to existing databases
+        try:
+            await db.execute("ALTER TABLE reports ADD COLUMN include_marvis_minis INTEGER DEFAULT 0")
             await db.commit()
         except aiosqlite.OperationalError:
             pass  # Column already exists
@@ -95,6 +102,7 @@ async def create_job(
     org_name: str = "",
     include_cable_tests: bool = False,
     include_config_errors: bool = False,
+    include_marvis_minis: bool = False,
     scope: str = "site",
 ) -> dict:
     """Insert a new report job and return it as a dict."""
@@ -102,10 +110,10 @@ async def create_job(
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute(
             """
-            INSERT INTO reports (id, mist_user_id, org_id, org_name, site_id, status, progress, include_cable_tests, include_config_errors, scope, created_at)
-            VALUES (?, ?, ?, ?, ?, 'pending', '{}', ?, ?, ?, ?)
+            INSERT INTO reports (id, mist_user_id, org_id, org_name, site_id, status, progress, include_cable_tests, include_config_errors, include_marvis_minis, scope, created_at)
+            VALUES (?, ?, ?, ?, ?, 'pending', '{}', ?, ?, ?, ?, ?)
             """,
-            (job_id, mist_user_id, org_id, org_name, site_id, int(include_cable_tests), int(include_config_errors), scope, now),
+            (job_id, mist_user_id, org_id, org_name, site_id, int(include_cable_tests), int(include_config_errors), int(include_marvis_minis), scope, now),
         )
         await db.commit()
     return {
@@ -122,6 +130,7 @@ async def create_job(
         "error": None,
         "include_cable_tests": int(include_cable_tests),
         "include_config_errors": int(include_config_errors),
+        "include_marvis_minis": int(include_marvis_minis),
         "created_at": now,
         "completed_at": None,
     }

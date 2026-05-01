@@ -22,6 +22,7 @@ class ReportCreateRequest(BaseModel):
     scope: Literal["site", "org"] = "site"
     include_cable_tests: bool = False
     include_config_errors: bool = False
+    include_marvis_minis: bool = False
 
     @model_validator(mode="after")
     def _validate_site_id(self):
@@ -54,6 +55,7 @@ class ReportResponse(BaseModel):
     error: str | None
     include_cable_tests: bool
     include_config_errors: bool
+    include_marvis_minis: bool
     created_at: str
     completed_at: str | None
 

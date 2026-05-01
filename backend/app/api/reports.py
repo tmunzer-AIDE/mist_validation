@@ -40,6 +40,7 @@ def _job_to_response(job: dict) -> ReportResponse:
         error=job.get("error"),
         include_cable_tests=bool(job.get("include_cable_tests", 0)),
         include_config_errors=bool(job.get("include_config_errors", 0)),
+        include_marvis_minis=bool(job.get("include_marvis_minis", 0)),
         created_at=job.get("created_at", ""),
         completed_at=job.get("completed_at"),
     )
@@ -126,6 +127,14 @@ async def create_report(
                         detail=f"Cable tests are not enabled for this site. Add it to the '{TDR_SITE_GROUP}' site group.",
                     )
 
+        # Marvis Minis safety check
+        if request.include_marvis_minis:
+            if not session.can_write(org_id):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Marvis Minis requires write access to the organization.",
+                )
+
     job_id = str(uuid.uuid4())
     org_name = _resolve_org_name(session, org_id)
     job = await db.create_job(
@@ -136,6 +145,7 @@ async def create_report(
         site_id=site_id,
         include_cable_tests=request.include_cable_tests if request.scope == "site" else False,
         include_config_errors=request.include_config_errors,
+        include_marvis_minis=request.include_marvis_minis if request.scope == "site" else False,
         scope=request.scope,
     )
 
@@ -160,6 +170,7 @@ async def create_report(
             org_id=org_id,
             include_cable_tests=request.include_cable_tests,
             include_config_errors=request.include_config_errors,
+            include_marvis_minis=request.include_marvis_minis,
             progress_callback=_progress_callback,
             token=session.mist_token,
             cookies=session.mist_cookies,
