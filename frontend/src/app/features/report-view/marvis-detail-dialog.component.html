@@ -1,0 +1,34 @@
+<div class="mdd-header">
+  <div class="mdd-title">
+    <div class="mdd-ap">{{ data.ap.ap_name || '(unnamed)' }}</div>
+    <div class="mdd-meta">{{ data.ap.switch_name }} · {{ data.ap.switch_port }} · VLAN {{ data.vlan.vlan }}</div>
+  </div>
+  <button mat-icon-button (click)="close()" aria-label="Close">
+    <mat-icon>close</mat-icon>
+  </button>
+</div>
+
+<div class="mdd-body">
+  @if (data.vlan.has_pcap && data.vlan.pcap_url) {
+    <a class="mdd-pcap" [href]="data.vlan.pcap_url" target="_blank" rel="noopener">
+      <mat-icon>download</mat-icon>
+      Download PCAP
+    </a>
+  }
+
+  @for (test of data.vlan.tests; track trackByTest($index, test)) {
+    <div class="mdd-test">
+      <div class="mdd-test-head">
+        <span class="mdd-test-type">{{ test.test_type }}</span>
+        <app-status-badge [status]="test.status" size="sm" />
+      </div>
+      <div class="mdd-test-summary">{{ test.summary }}</div>
+      <mat-expansion-panel class="mdd-raw">
+        <mat-expansion-panel-header>
+          <mat-panel-title>Raw response</mat-panel-title>
+        </mat-expansion-panel-header>
+        <pre class="mdd-json">{{ formatJson(test.detail) }}</pre>
+      </mat-expansion-panel>
+    </div>
+  }
+</div>
