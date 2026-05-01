@@ -101,6 +101,11 @@ export class MarvisMatrixComponent {
     if (!vlan.tests.length) return `VLAN ${vlanId} · not tested`;
     const failures = vlan.tests.filter((t) => t.status === 'fail').map((t) => t.test_type);
     if (failures.length) return `VLAN ${vlanId} · failed: ${failures.join(', ')}`;
+    const warns = vlan.tests.filter((t) => t.status === 'warn').map((t) => t.test_type);
+    if (warns.length) return `VLAN ${vlanId} · warn: ${warns.join(', ')}`;
+    const passed = vlan.tests.filter((t) => t.status === 'pass').length;
+    const skipped = vlan.tests.filter((t) => t.status === 'info').length;
+    if (skipped) return `VLAN ${vlanId} · ${passed}/${vlan.tests.length} passed, ${skipped} not validated`;
     return `VLAN ${vlanId} · all tests passed`;
   }
 

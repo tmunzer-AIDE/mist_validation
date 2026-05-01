@@ -18,13 +18,16 @@ logger = logging.getLogger(__name__)
 # ── Status mapping ────────────────────────────────────────────────────────
 
 # Maps Mist's raw test_status values onto the report schema status values.
-# `not_validated` → `info` (and excluded from score). Anything else → `info`
-# defensively so unexpected statuses don't crash the parser.
+# `not_validated` → `info` (excluded from score — the AP didn't actually run the test).
+# Empty/missing raw status → `info` (parser hasn't seen a result yet).
+# Any other unrecognized status → `warn` (with a log line) so the new state shows up
+# in fail/warn accounting and UI severity rather than being silently swallowed.
 _TEST_STATUS_MAP: dict[str, str] = {
     "success": "pass",
     "failure": "fail",
     "not_validated": "info",
 }
+_UNKNOWN_STATUSES_SEEN: set[str] = set()
 
 # vlan-level rollup uses this ordering; higher index = worse.
 _STATUS_RANK: dict[str, int] = {
@@ -37,7 +40,18 @@ _STATUS_RANK: dict[str, int] = {
 
 
 def _map_status(raw_status: str | None) -> str:
-    return _TEST_STATUS_MAP.get(raw_status or "", "info")
+    if not raw_status:
+        return "info"
+    mapped = _TEST_STATUS_MAP.get(raw_status)
+    if mapped is not None:
+        return mapped
+    # Unknown status from the API (e.g. a new state Mist introduces). Surface it
+    # as `warn` so it reaches the score and UI severity, and log once per status
+    # so we notice and update the map.
+    if raw_status not in _UNKNOWN_STATUSES_SEEN:
+        _UNKNOWN_STATUSES_SEEN.add(raw_status)
+        logger.warning("marvis_unknown_test_status status=%s (treated as warn)", raw_status)
+    return "warn"
 
 
 # ── Per-test summary string ───────────────────────────────────────────────
@@ -415,16 +429,17 @@ async def run_marvis_minis(
         except (TypeError, ValueError):
             progress_float = 0.0
 
-        await progress_callback(job_id, {
-            "type": "marvis_progress",
-            "data": {
-                "test_id": test_id,
-                "progress": progress_float,
-                "ap_count_done": ap_done,
-                "ap_count_total": ap_total,
-                "ap_results": parsed,
-            },
-        })
+        if progress_callback is not None:
+            await progress_callback(job_id, {
+                "type": "marvis_progress",
+                "data": {
+                    "test_id": test_id,
+                    "progress": progress_float,
+                    "ap_count_done": ap_done,
+                    "ap_count_total": ap_total,
+                    "ap_results": parsed,
+                },
+            })
 
         if _is_terminal(snapshot):
             duration = int(time.monotonic() - start_monotonic)
