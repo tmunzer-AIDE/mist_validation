@@ -486,33 +486,33 @@
       </div>
     }
 
-      @if (marvisData()) {
-        <div class="mv-card marvis-section">
-          <div class="mv-card-head">
-            <div>
-              <h3 class="mv-card-title">Synthetic tests (Marvis Minis)</h3>
-              <p class="mv-card-sub">
-                @if (marvisIsLive()) {
-                  Running… {{ ($any(marvisData())?.progress ?? 0) | number: '1.0-0' }}%
-                } @else if ($any(marvisData())?.status === 'completed') {
-                  {{ $any(marvisData())?.summary?.pass ?? 0 }} pass · {{ $any(marvisData())?.summary?.fail ?? 0 }} fail · duration {{ $any(marvisData())?.duration_seconds ?? 0 }}s
-                } @else if ($any(marvisData())?.status === 'trigger_failed') {
-                  <span class="marvis-error">Trigger failed: {{ $any(marvisData())?.trigger_error }}</span>
-                } @else if ($any(marvisData())?.status === 'timeout') {
-                  Test timed out after {{ $any(marvisData())?.duration_seconds ?? 0 }}s
-                }
-              </p>
-            </div>
-          </div>
-          <div class="marvis-section-body">
-            <app-marvis-matrix
-              [data]="marvisData()"
-              [live]="marvisIsLive()"
-              (cellClick)="openMarvisDetail($event)"
-            />
+    @if (marvisData()) {
+      <div class="mv-card marvis-section">
+        <div class="mv-card-head">
+          <div>
+            <h3 class="mv-card-title">Synthetic tests (Marvis Minis)</h3>
+            <p class="mv-card-sub">
+              @if (marvisIsLive()) {
+                Running… {{ ($any(marvisData())?.progress ?? 0) | number: '1.0-0' }}%
+              } @else if ($any(marvisData())?.status === 'completed') {
+                {{ $any(marvisData())?.summary?.pass ?? 0 }} pass · {{ $any(marvisData())?.summary?.fail ?? 0 }} fail · duration {{ $any(marvisData())?.duration_seconds ?? 0 }}s
+              } @else if ($any(marvisData())?.status === 'trigger_failed') {
+                <span class="marvis-error">Trigger failed: {{ $any(marvisData())?.trigger_error }}</span>
+              } @else if ($any(marvisData())?.status === 'timeout') {
+                Test timed out after {{ $any(marvisData())?.duration_seconds ?? 0 }}s
+              }
+            </p>
           </div>
         </div>
-      }
+        <div class="marvis-section-body">
+          <app-marvis-matrix
+            [data]="marvisData()"
+            [live]="marvisIsLive()"
+            (cellClick)="openMarvisDetail($event)"
+          />
+        </div>
+      </div>
+    }
     } @else if (subView() === 'findings') {
       <button
         matButton="text"
