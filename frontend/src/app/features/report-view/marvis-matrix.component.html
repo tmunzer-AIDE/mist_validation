@@ -1,0 +1,50 @@
+<div class="marvis-matrix">
+  @if (apResults().length === 0) {
+    <div class="marvis-empty">
+      @if (live()) {
+        <mat-spinner diameter="20"></mat-spinner>
+        <span>Waiting for first AP response…</span>
+      } @else {
+        <span>No tested APs in this run.</span>
+      }
+    </div>
+  } @else {
+    <table class="marvis-grid">
+      <thead>
+        <tr>
+          <th class="ap-cell">Access Point</th>
+          @for (vid of vlanIds(); track vid) {
+            <th class="vlan-cell">VLAN {{ vid }}</th>
+          }
+        </tr>
+      </thead>
+      <tbody>
+        @for (ap of apResults(); track ap.ap_mac) {
+          <tr>
+            <td class="ap-cell">
+              <div class="ap-name">{{ ap.ap_name || '(unnamed)' }}</div>
+              <div class="ap-meta">{{ ap.switch_name }} · {{ ap.switch_port }}</div>
+            </td>
+            @for (vid of vlanIds(); track vid) {
+              <td
+                class="vlan-cell status-{{ cellStatus(ap, vid) }}"
+                [class.clickable]="cellStatus(ap, vid) !== 'not_tested' && cellStatus(ap, vid) !== 'pending' && cellStatus(ap, vid) !== 'info'"
+                [matTooltip]="cellTooltip(ap, vid)"
+                (click)="onCellClick(ap, vid)"
+              >
+                @if (cellStatus(ap, vid) === 'pending') {
+                  <mat-spinner diameter="16"></mat-spinner>
+                } @else {
+                  <mat-icon>{{ iconFor(cellStatus(ap, vid)) }}</mat-icon>
+                }
+                @if (vlanByAp(ap, vid)?.has_pcap) {
+                  <span class="pcap-chip" matTooltip="PCAP available">PCAP</span>
+                }
+              </td>
+            }
+          </tr>
+        }
+      </tbody>
+    </table>
+  }
+</div>
