@@ -1,0 +1,138 @@
+<div class="mdd-header">
+  <div class="mdd-title">
+    <div class="mdd-ap">{{ data.ap.ap_name || '(unnamed)' }}</div>
+    <div class="mdd-meta">{{ data.ap.switch_name }} · {{ data.ap.switch_port }} · VLAN {{ data.vlan.vlan }}</div>
+  </div>
+  <button mat-icon-button (click)="close()" aria-label="Close">
+    <mat-icon>close</mat-icon>
+  </button>
+</div>
+
+<div class="mdd-body">
+  @if (data.vlan.has_pcap && data.vlan.pcap_url) {
+    <a class="mdd-pcap" [href]="data.vlan.pcap_url" target="_blank" rel="noopener">
+      <mat-icon>download</mat-icon>
+      Download PCAP
+    </a>
+  }
+
+  @for (test of data.vlan.tests; track trackByTest($index, test)) {
+    <div class="mdd-test">
+      <div class="mdd-test-head">
+        <span class="mdd-test-type">{{ test.test_type }}</span>
+        <app-status-badge
+          [status]="test.status"
+          [label]="test.status === 'info' ? 'Skipped' : ''"
+          size="sm"
+        />
+      </div>
+      <div class="mdd-test-summary">{{ test.summary }}</div>
+
+      @switch (test.test_type) {
+        @case ('DHCP') {
+          @if (dhcpFields(test); as fields) {
+            @if (fields.length) {
+              <div class="mdd-kv">
+                @for (f of fields; track f.label) {
+                  <div class="mdd-kv-row">
+                    <span class="mdd-kv-label">{{ f.label }}</span>
+                    <span class="mdd-kv-value" [class.mono]="f.mono">{{ f.value }}</span>
+                  </div>
+                }
+              </div>
+            }
+          }
+        }
+
+        @case ('ARP') {
+          @if (arpRows(test); as rows) {
+            @if (rows.length) {
+              <table class="mdd-mini-table">
+                <thead>
+                  <tr>
+                    <th>IP</th>
+                    <th>MAC</th>
+                    <th class="num">Latency</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (r of rows; track r.ip) {
+                    <tr>
+                      <td class="mono">{{ r.ip }}</td>
+                      <td class="mono">{{ r.mac }}</td>
+                      <td class="num">{{ r.latency }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            }
+          }
+        }
+
+        @case ('DNS') {
+          @if (dnsRows(test); as rows) {
+            @if (rows.length) {
+              <table class="mdd-mini-table">
+                <thead>
+                  <tr>
+                    <th>URL</th>
+                    <th>Resolved</th>
+                    <th>DNS server</th>
+                    <th class="num">Latency</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (r of rows; track r.url) {
+                    <tr [class.row-fail]="r.isError">
+                      <td class="mono">{{ r.url }}</td>
+                      <td class="mono" [class.mdd-error]="r.isError">{{ r.resolved }}</td>
+                      <td class="mono">{{ r.dns_ip }}</td>
+                      <td class="num">{{ r.latency }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            }
+          }
+        }
+
+        @case ('CURL') {
+          @if (curlClientIp(test); as clientIp) {
+            <div class="mdd-meta-row">From client <span class="mono">{{ clientIp }}</span></div>
+          }
+          @if (curlRows(test); as rows) {
+            @if (rows.length) {
+              <table class="mdd-mini-table">
+                <thead>
+                  <tr>
+                    <th>URL</th>
+                    <th>Server</th>
+                    <th>Response</th>
+                    <th class="num">Latency</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (r of rows; track r.url) {
+                    <tr [class.row-fail]="r.isError">
+                      <td class="mono">{{ r.url }}</td>
+                      <td class="mono">{{ r.server_ip }}</td>
+                      <td [class.mdd-error]="r.isError">{{ r.response }}</td>
+                      <td class="num">{{ r.latency }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            }
+          }
+        }
+      }
+
+      <mat-expansion-panel class="mdd-raw">
+        <mat-expansion-panel-header>
+          <mat-panel-title>Raw response</mat-panel-title>
+        </mat-expansion-panel-header>
+        <pre class="mdd-json">{{ formatJson(test.detail) }}</pre>
+      </mat-expansion-panel>
+    </div>
+  }
+</div>

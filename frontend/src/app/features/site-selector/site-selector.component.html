@@ -314,6 +314,52 @@
           }
         </div>
 
+        <!-- Optional: Marvis Minis -->
+        <div
+          class="check-group highlight"
+          [class.unavailable]="scope() === 'org'"
+        >
+          <div class="cg-head">
+            <div class="cg-text">
+              <div class="cg-title">
+                Marvis Minis
+                <span class="cg-badge heavy">HEAVY</span>
+                <span class="cg-badge">~4 min</span>
+              </div>
+              <div class="cg-hint">
+                Synthetic DHCP / ARP / DNS / CURL tests across active VLANs · per-site only
+              </div>
+            </div>
+            @if (scope() === 'org') {
+              <span class="cg-na">NOT IN ORG-WIDE</span>
+            }
+          </div>
+          @if (scope() === 'site') {
+            <div class="cg-row">
+              <mat-checkbox
+                [formControl]="marvisMinisCtrl"
+                [matTooltip]="marvisMinisDisabledReason()"
+              >
+                <span class="opt-label">Run Marvis Minis synthetic tests</span>
+                <span class="opt-hint"
+                  >Requires write access · Marvis subscription</span
+                >
+              </mat-checkbox>
+              @if (selectedSite() && marvisMinisDisabledReason()) {
+                <div class="info-block">
+                  <mat-icon>info</mat-icon>
+                  <span>{{ marvisMinisDisabledReason() }}</span>
+                </div>
+              } @else if (selectedSite() && marvisMinisCtrl.value) {
+                <div class="warn-block">
+                  <mat-icon>warning</mat-icon>
+                  <span>Test runs ~4 minutes after all other checks complete.</span>
+                </div>
+              }
+            </div>
+          }
+        </div>
+
         <!-- Optional: Config errors -->
         <div class="check-group highlight">
           <div class="cg-head">

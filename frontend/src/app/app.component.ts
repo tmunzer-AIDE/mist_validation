@@ -1,4 +1,4 @@
-import { Component, HostListener, OnInit, inject, signal } from '@angular/core';
+import { Component, HostListener, OnInit, effect, inject, signal } from '@angular/core';
 import { LoginComponent } from './features/login/login.component';
 import { SiteSelectorComponent } from './features/site-selector/site-selector.component';
 import { ReportsComponent } from './features/reports/reports.component';
@@ -6,6 +6,7 @@ import { ReportViewComponent } from './features/report-view/report-view.componen
 import { OrgReportViewComponent } from './features/org-report-view/org-report-view.component';
 import { ValidationReferenceComponent } from './features/validation-reference/validation-reference.component';
 import { AppConfigService } from './core/services/app-config.service';
+import { AuthEventsService } from './core/services/auth-events.service';
 import { ShellRoute } from './shared/components/page-shell/page-shell.component';
 
 type AppState = 'login' | 'site_selector' | 'reports' | 'report' | 'org_report' | 'validation_reference';
@@ -33,10 +34,33 @@ export class AppComponent implements OnInit {
 
   private skipPush = false;
   private cfg = inject(AppConfigService);
+  private authEvents = inject(AuthEventsService);
+
+  constructor() {
+    // When the HTTP auth interceptor sees a 401 on an /api/* request, the
+    // server has invalidated our session. Wipe local auth state and route the
+    // user back to login. Skip on the very first run (signal initial value
+    // tracks zero) so we don't redirect on app boot.
+    let lastSeen = this.authEvents.unauthorized();
+    effect(() => {
+      const n = this.authEvents.unauthorized();
+      if (n === lastSeen) return;
+      lastSeen = n;
+      this.handleUnauthorized();
+    });
+  }
 
   ngOnInit(): void {
     history.replaceState({ state: 'login' }, '');
     this.cfg.load();
+  }
+
+  private handleUnauthorized(): void {
+    if (!this.authInfo()) return;  // already on login; no-op
+    this.authInfo.set(null);
+    this.selectedOrg.set(null);
+    this.activeJobId.set(null);
+    this.pushState('login');
   }
 
   @HostListener('window:popstate', ['$event'])

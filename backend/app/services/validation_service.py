@@ -93,6 +93,7 @@ _STEPS = [
     ("gateways", "Gateways"),
     ("cable_tests", "Cable Tests"),
     ("config_errors", "Config Command Errors"),
+    ("marvis_minis", "Marvis Minis"),
 ]
 
 
@@ -133,6 +134,8 @@ class _ProgressTracker:
         self._cable_test_finish_at: float | None = None  # monotonic seconds; set at step start
         self._cable_test_total = 0
         self._cable_tests_done = 0
+        self._marvis_finish_at: float | None = None  # monotonic seconds; set at marvis step start
+        self.MARVIS_TOTAL_SECONDS = 240  # ~4 min budget
 
     async def start_step(self, step_id: str, message: str = "") -> None:
         self.steps[step_id]["status"] = "running"
@@ -141,6 +144,21 @@ class _ProgressTracker:
 
     async def complete_step(self, step_id: str, message: str = "", *, increment: bool = True) -> None:
         self.steps[step_id]["status"] = "completed"
+        self.steps[step_id]["message"] = message
+        if increment and self.overall_total > 0:
+            self.overall_completed = min(self.overall_completed + 1, self.overall_total)
+        await self._broadcast()
+
+    async def fail_step(self, step_id: str, message: str = "", *, increment: bool = True) -> None:
+        """Mirror of complete_step but sets status='failed'.
+
+        We still tick `overall_completed` because the step is *done*: a failed
+        Marvis (or any opt-in step that errors out) shouldn't leave the overall
+        progress bar pinned below 100% while the surrounding report is marked
+        completed. Pass `increment=False` for paths that already counted ticks
+        another way (none today, but parity with complete_step).
+        """
+        self.steps[step_id]["status"] = "failed"
         self.steps[step_id]["message"] = message
         if increment and self.overall_total > 0:
             self.overall_completed = min(self.overall_completed + 1, self.overall_total)
@@ -158,13 +176,15 @@ class _ProgressTracker:
     def set_execution_total(self, cable_test_ports: int) -> None:
         """Switch from discovery (indeterminate) to execution (determinate).
 
-        Execution-phase steps: aps, switches, gateways, cable_tests (N ports), config_errors.
-        If cable_test_ports == 0, cable_tests still counts as 1 step.
+        Execution-phase steps: aps, switches, gateways, cable_tests (N ports),
+        config_errors, marvis_minis. If cable_test_ports == 0, cable_tests still
+        counts as 1 step.
         """
-        # 4 = aps + switches + gateways + config_errors. Cable tests contribute either
-        # `cable_test_ports` ticks (one per port via complete_cable_test_port) or 1 tick
-        # when the step is skipped — hence max(cable_test_ports, 1).
-        self.overall_total = 4 + max(cable_test_ports, 1)
+        # 5 = aps + switches + gateways + config_errors + marvis_minis. Cable tests
+        # contribute either `cable_test_ports` ticks (one per port via
+        # complete_cable_test_port) or 1 tick when the step is skipped — hence
+        # max(cable_test_ports, 1).
+        self.overall_total = 5 + max(cable_test_ports, 1)
         self.overall_completed = 0
         self._cable_test_total = max(0, cable_test_ports)
         self._cable_tests_done = 0
@@ -190,21 +210,33 @@ class _ProgressTracker:
         if self._cable_test_max_ports > 0:
             self._cable_test_finish_at = time.monotonic() + self._cable_test_max_ports * self.CABLE_SECONDS_PER_PORT
 
+    def start_marvis_phase(self) -> None:
+        """Anchor the marvis-minis finish time at the moment the step actually starts."""
+        self._marvis_finish_at = time.monotonic() + self.MARVIS_TOTAL_SECONDS
+
     def _eta_seconds(self) -> int | None:
-        # Without registered costs the formula has nothing to anchor on — return None so
-        # the UI hides the ETA instead of pinning at "0s".
-        if not self._step_api_cost and self._cable_test_max_ports == 0:
+        # Without registered costs and no wall-clock anchors, the formula has nothing
+        # to work from — return None so the UI hides the ETA instead of pinning at 0s.
+        marvis_step_status = self.steps.get("marvis_minis", {}).get("status")
+        marvis_active = marvis_step_status in ("pending", "running") and (
+            self._marvis_finish_at is not None
+            or self._step_api_cost.get("marvis_minis", 0) > 0
+        )
+        if (
+            not self._step_api_cost
+            and self._cable_test_max_ports == 0
+            and not marvis_active
+        ):
             return None
+        # Only `pending` and `running` steps still contribute to the ETA.
+        # `completed` and `failed` are both terminal — a Marvis trigger_failed,
+        # for example, should immediately drop its ~33-call budget from the
+        # countdown so the UI clock can reach 0 cleanly.
         api_remaining = sum(
             self._step_api_cost.get(sid, 0)
             for sid, step in self.steps.items()
-            if step["status"] != "completed"
+            if step["status"] in ("pending", "running")
         )
-        # Cable contribution: estimate while the step is pending, anchored countdown
-        # while running. The else-fallback covers the brief running-without-anchor window
-        # between `start_step("cable_tests")` (which broadcasts) and `start_cable_test_phase()`
-        # (which sets the anchor without broadcasting) — without it the ETA dips to 0
-        # at the start_step broadcast, then jumps back up on the next port-complete tick.
         cable_remaining = 0
         cable_status = self.steps.get("cable_tests", {}).get("status")
         if cable_status in ("pending", "running"):
@@ -212,7 +244,15 @@ class _ProgressTracker:
                 cable_remaining = max(0, int(self._cable_test_finish_at - time.monotonic()))
             else:
                 cable_remaining = self._cable_test_max_ports * self.CABLE_SECONDS_PER_PORT
-        return api_remaining * self.API_SECONDS_PER_CALL + cable_remaining
+
+        marvis_remaining = 0
+        if marvis_active:
+            if self._marvis_finish_at is not None:
+                marvis_remaining = max(0, int(self._marvis_finish_at - time.monotonic()))
+            else:
+                marvis_remaining = self.MARVIS_TOTAL_SECONDS
+
+        return api_remaining * self.API_SECONDS_PER_CALL + cable_remaining + marvis_remaining
 
     async def complete_cable_test_port(self) -> None:
         """Increment per-port done counter and broadcast. ETA is anchor-driven, not
@@ -247,6 +287,7 @@ async def run_post_deployment_validation(
     org_id: str,
     include_cable_tests: bool = False,
     include_config_errors: bool = False,
+    include_marvis_minis: bool = False,
     progress_callback=None,
     token: str | None = None,
     cookies: dict | None = None,
@@ -319,6 +360,7 @@ async def run_post_deployment_validation(
                 "gateways": n_gw * 3,  # stats + optics + port_config per gateway
                 "cable_tests": 0,      # excluded (25 s/port wall-clock dominates)
                 "config_errors": (n_sw + n_gw) if include_config_errors else 0,
+                "marvis_minis": 1 if include_marvis_minis else 0,
             })
             # Seed cable estimate from up_ports_by_mac so the FIRST visible ETA already
             # includes the cable-test wall-clock. Keys here are mac (vs device_id later);
@@ -527,6 +569,34 @@ async def run_post_deployment_validation(
         else:
             await tracker.start_step("config_errors", "Skipped (opt-in)")
             await tracker.complete_step("config_errors", "Skipped (opt-in)")
+
+        # Step 10: Marvis Minis (opt-in)
+        from app.services import marvis_service
+        if include_marvis_minis:
+            await tracker.start_step("marvis_minis", "Triggering Marvis Minis…")
+            tracker.start_marvis_phase()
+            result["marvis_minis"] = await marvis_service.run_marvis_minis(
+                session=session,
+                org_id=mist.org_id,
+                site_id=site_id,
+                tracker=tracker,
+                progress_callback=progress_callback,
+                job_id=job_id,
+            )
+            mm_status = result["marvis_minis"].get("status")
+            if mm_status == "completed":
+                await tracker.complete_step("marvis_minis", "Tests complete")
+            elif mm_status == "trigger_failed":
+                # Mark step failed but report still completes. fail_step ticks
+                # overall_completed so the progress bar reaches 100% even on a
+                # Marvis-only failure.
+                trigger_err = result["marvis_minis"].get("trigger_error", "unknown")
+                await tracker.fail_step("marvis_minis", f"Trigger failed: {trigger_err}")
+            else:  # timeout / poll_failed / other
+                await tracker.fail_step("marvis_minis", f"Marvis Minis {mm_status}")
+        else:
+            await tracker.start_step("marvis_minis", "Skipped (opt-in)")
+            await tracker.complete_step("marvis_minis", "Skipped (opt-in)")
 
         # Attach correlated events to each device
         _attach_device_events(result, events_by_mac)
@@ -2374,6 +2444,16 @@ def _compute_summary(result: dict) -> dict:
                 if s in counts:
                     counts[s] += 1
 
+    # Marvis Minis tests (each AP × VLAN × test counts toward score per spec §5.4)
+    marvis = result.get("marvis_minis")
+    if isinstance(marvis, dict):
+        for ap in marvis.get("ap_results", []) or []:
+            for vlan in ap.get("vlans", []) or []:
+                for test in vlan.get("tests", []) or []:
+                    s = test.get("status", "info")
+                    if s in counts:
+                        counts[s] += 1
+
     return counts
 
 
@@ -2514,6 +2594,7 @@ async def check_site_api_budget(
     site_id: str,
     include_config_errors: bool = False,
     include_cable_tests: bool = False,
+    include_marvis_minis: bool = False,
 ) -> dict:
     """Pre-flight check: estimate API call budget for a single-site report."""
     from math import ceil
@@ -2562,13 +2643,15 @@ async def check_site_api_budget(
     #   per gateway: stats + optics + ports (~3)
     #   cable tests: ~4 calls per switch (TDR runs)
     #   config errors: 1 call per (switch + gateway)
+    #   marvis minis: 1 trigger + ~32 polls (15s × 8 + 5s × 24 ≈ 4 min wall-clock)
     base_calls = 10
     pagination = ceil(total / 1000) * 2 if total > 0 else 0
     per_device_calls = n_ap + n_sw * 2 + n_gw * 3
     cable_test_calls = n_sw * 4 if include_cable_tests else 0
     config_error_calls = (n_sw + n_gw) if include_config_errors else 0
+    marvis_calls = 33 if include_marvis_minis else 0
 
-    estimated_base = base_calls + pagination + per_device_calls + cable_test_calls
+    estimated_base = base_calls + pagination + per_device_calls + cable_test_calls + marvis_calls
     estimated_total = estimated_base + config_error_calls
     required = int(estimated_total * 1.15)
 

@@ -26,21 +26,24 @@ def _resolve_org_name(session: SessionData, org_id: str) -> str:
 
 
 def _job_to_response(job: dict) -> ReportResponse:
-    # progress and result are already deserialized by db._deserialize_row
+    # progress and result are already deserialized by db._deserialize_row.
+    # `or ""` coerces NULL/None values from sqlite (the column default kicks in only
+    # for missing keys, not for explicit NULLs left by older write paths).
     return ReportResponse(
         id=job["id"],
         org_id=job["org_id"],
-        org_name=job.get("org_name", ""),
-        site_id=job.get("site_id", ""),
-        site_name=job.get("site_name", ""),
-        scope=job.get("scope", "site"),
-        status=job.get("status", "pending"),
-        progress=job.get("progress", {}),
+        org_name=job.get("org_name") or "",
+        site_id=job.get("site_id") or "",
+        site_name=job.get("site_name") or "",
+        scope=job.get("scope") or "site",
+        status=job.get("status") or "pending",
+        progress=job.get("progress") or {},
         result=job.get("result"),
         error=job.get("error"),
         include_cable_tests=bool(job.get("include_cable_tests", 0)),
         include_config_errors=bool(job.get("include_config_errors", 0)),
-        created_at=job.get("created_at", ""),
+        include_marvis_minis=bool(job.get("include_marvis_minis", 0)),
+        created_at=job.get("created_at") or "",
         completed_at=job.get("completed_at"),
     )
 
@@ -70,6 +73,7 @@ async def check_budget(
     site_id: str | None = None,
     include_config_errors: bool = False,
     include_cable_tests: bool = False,
+    include_marvis_minis: bool = False,
     session: SessionData = Depends(get_session),
 ):
     if org_id not in session.org_ids:
@@ -77,7 +81,7 @@ async def check_budget(
     mist = _make_mist_service(session, org_id)
     if site_id:
         budget = await validation_service.check_site_api_budget(
-            mist.get_session(), org_id, site_id, include_config_errors, include_cable_tests
+            mist.get_session(), org_id, site_id, include_config_errors, include_cable_tests, include_marvis_minis
         )
     else:
         budget = await validation_service.check_org_api_budget(
@@ -126,6 +130,14 @@ async def create_report(
                         detail=f"Cable tests are not enabled for this site. Add it to the '{TDR_SITE_GROUP}' site group.",
                     )
 
+        # Marvis Minis safety check
+        if request.include_marvis_minis:
+            if not session.can_write(org_id):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Marvis Minis requires write access to the organization.",
+                )
+
     job_id = str(uuid.uuid4())
     org_name = _resolve_org_name(session, org_id)
     job = await db.create_job(
@@ -136,6 +148,7 @@ async def create_report(
         site_id=site_id,
         include_cable_tests=request.include_cable_tests if request.scope == "site" else False,
         include_config_errors=request.include_config_errors,
+        include_marvis_minis=request.include_marvis_minis if request.scope == "site" else False,
         scope=request.scope,
     )
 
@@ -160,6 +173,7 @@ async def create_report(
             org_id=org_id,
             include_cable_tests=request.include_cable_tests,
             include_config_errors=request.include_config_errors,
+            include_marvis_minis=request.include_marvis_minis,
             progress_callback=_progress_callback,
             token=session.mist_token,
             cookies=session.mist_cookies,

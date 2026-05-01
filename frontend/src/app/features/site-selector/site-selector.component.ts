@@ -39,6 +39,7 @@ interface ReportRow {
   created_at: string;
   include_cable_tests: boolean;
   include_config_errors: boolean;
+  include_marvis_minis: boolean;
 }
 
 interface BudgetInfo {
@@ -102,6 +103,7 @@ export class SiteSelectorComponent implements OnInit {
   siteSearchCtrl = this.fb.nonNullable.control('');
   cableTestsCtrl = this.fb.control(false);
   configErrorsCtrl = this.fb.control(false);
+  marvisMinisCtrl = this.fb.control(false);
 
   currentOrg = signal<{ id: string; name: string; role?: string } | null>(null);
   allSites = signal<Site[]>([]);
@@ -209,6 +211,17 @@ export class SiteSelectorComponent implements OnInit {
     return '';
   });
 
+  marvisMinisAllowed = computed(() => {
+    return this.canWriteOrg();
+  });
+
+  marvisMinisDisabledReason = computed(() => {
+    if (!this.canWriteOrg()) {
+      return 'Marvis Minis requires write access. Your role for this organization is read-only.';
+    }
+    return '';
+  });
+
   budgetPct = computed(() => {
     const b = this.budget();
     if (!b) return 0;
@@ -237,10 +250,22 @@ export class SiteSelectorComponent implements OnInit {
       }
     });
 
+    effect(() => {
+      if (!this.marvisMinisAllowed()) {
+        this.marvisMinisCtrl.setValue(false, { emitEvent: false });
+        this.marvisMinisCtrl.disable({ emitEvent: false });
+      } else {
+        this.marvisMinisCtrl.enable({ emitEvent: false });
+      }
+    });
+
     this.configErrorsCtrl.valueChanges
       .pipe(takeUntilDestroyed())
       .subscribe(() => this.fetchBudget());
     this.cableTestsCtrl.valueChanges
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => this.fetchBudget());
+    this.marvisMinisCtrl.valueChanges
       .pipe(takeUntilDestroyed())
       .subscribe(() => this.fetchBudget());
   }
@@ -314,8 +339,11 @@ export class SiteSelectorComponent implements OnInit {
     if (newScope === 'org') {
       this.cableTestsCtrl.setValue(false, { emitEvent: false });
       this.cableTestsCtrl.disable({ emitEvent: false });
+      this.marvisMinisCtrl.setValue(false, { emitEvent: false });
+      this.marvisMinisCtrl.disable({ emitEvent: false });
     } else {
       if (this.cableTestsAllowed()) this.cableTestsCtrl.enable({ emitEvent: false });
+      if (this.marvisMinisAllowed()) this.marvisMinisCtrl.enable({ emitEvent: false });
     }
     this.fetchBudget();
   }
@@ -341,6 +369,7 @@ export class SiteSelectorComponent implements OnInit {
       }
       params.set('site_id', site.id);
       params.set('include_cable_tests', String(!!this.cableTestsCtrl.value));
+      params.set('include_marvis_minis', String(!!this.marvisMinisCtrl.value));
     }
 
     this.budgetLoading.set(true);
@@ -383,6 +412,7 @@ export class SiteSelectorComponent implements OnInit {
     if (!isOrg) {
       body['site_id'] = this.selectedSite()!.id;
       body['include_cable_tests'] = this.cableTestsCtrl.value;
+      body['include_marvis_minis'] = this.marvisMinisCtrl.value;
     }
 
     this.api.post<StartReportResponse>('reports', body).subscribe({
