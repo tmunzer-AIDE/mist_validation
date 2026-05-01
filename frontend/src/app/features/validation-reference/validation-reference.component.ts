@@ -1,6 +1,4 @@
 import { Component, EventEmitter, Output } from '@angular/core';
-import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
 import {
   PageShellComponent,
   ShellRoute,
@@ -22,7 +20,7 @@ interface CheckSection {
 @Component({
   selector: 'app-validation-reference',
   standalone: true,
-  imports: [MatButtonModule, MatIconModule, PageShellComponent],
+  imports: [PageShellComponent],
   templateUrl: './validation-reference.component.html',
   styleUrl: './validation-reference.component.scss',
 })

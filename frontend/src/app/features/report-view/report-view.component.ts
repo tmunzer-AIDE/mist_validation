@@ -15,7 +15,7 @@ import { MatExpansionModule } from '@angular/material/expansion';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { MatDialog } from '@angular/material/dialog';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { ApiService } from '../../core/services/api.service';
 import { WsService } from '../../core/services/ws.service';
 import { StatusBadgeComponent } from '../../shared/components/status-badge/status-badge.component';
@@ -136,6 +136,7 @@ interface FlatDevice {
   imports: [
     DatePipe,
     MatButtonModule,
+    MatDialogModule,
     MatExpansionModule,
     MatIconModule,
     MatProgressSpinnerModule,

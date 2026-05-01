@@ -646,6 +646,11 @@
   font-weight: 500;
   cursor: pointer;
   margin-left: 4px;
+  // Neutralize <button> defaults — keep link-like appearance, retain native focus
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
 
   &:hover { text-decoration: underline; }
 }
