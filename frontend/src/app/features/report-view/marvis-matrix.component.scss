@@ -8,7 +8,7 @@
   align-items: center;
   gap: 12px;
   padding: 24px;
-  color: var(--mv-text-muted, #6c757d);
+  color: var(--muted-strong);
   font-size: 14px;
 }
 
@@ -22,15 +22,15 @@
 .marvis-grid th,
 .marvis-grid td {
   padding: 10px 12px;
-  border-bottom: 1px solid var(--mv-border, #e9ecef);
+  border-bottom: 1px solid var(--border);
   vertical-align: middle;
   text-align: center;
 }
 
 .marvis-grid th {
-  background: var(--mv-surface-2, #f8f9fa);
+  background: var(--surface-2);
   font-weight: 600;
-  color: var(--mv-text, #212529);
+  color: var(--ink);
   white-space: nowrap;
 }
 
@@ -39,23 +39,23 @@
   text-align: left;
   position: sticky;
   left: 0;
-  background: var(--mv-surface, #fff);
+  background: var(--surface);
   z-index: 1;
   min-width: 220px;
 }
 
 .marvis-grid th.ap-cell {
-  background: var(--mv-surface-2, #f8f9fa);
+  background: var(--surface-2);
 }
 
 .ap-name {
   font-weight: 600;
-  color: var(--mv-text, #212529);
+  color: var(--ink);
 }
 
 .ap-meta {
   font-size: 12px;
-  color: var(--mv-text-muted, #6c757d);
+  color: var(--muted-strong);
 }
 
 td.vlan-cell {
@@ -74,7 +74,7 @@ td.vlan-cell {
     cursor: pointer;
 
     &:hover {
-      background: var(--mv-surface-hover, #f1f3f5);
+      background: var(--surface-2);
     }
   }
 
