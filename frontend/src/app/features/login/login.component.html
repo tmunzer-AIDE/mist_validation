@@ -1,100 +1,171 @@
-<div class="login-container">
-  <mat-card class="login-card">
-    <mat-card-content style="padding: 0px;">
-      <div class="logo-row">
-        <div class="logo-icon-wrap">
-          <mat-icon class="logo-icon">verified_user</mat-icon>
-        </div>
-        <div>
-          <div class="app-title">Post-Deployment Report</div>
-          <div class="subtitle">Mist Network Validation Tool</div>
-        </div>
+<div class="login-page">
+  <header class="login-top">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 32 32" aria-hidden="true">
+          <defs>
+            <linearGradient id="mvLoginBg" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#6366f1"/>
+              <stop offset="100%" stop-color="#06b6d4"/>
+            </linearGradient>
+            <linearGradient id="mvLoginShine" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="#ffffff" stop-opacity="0.22"/>
+              <stop offset="55%" stop-color="#ffffff" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <rect x="1" y="1" width="30" height="30" rx="7" fill="url(#mvLoginBg)"/>
+          <rect x="1" y="1" width="30" height="30" rx="7" fill="url(#mvLoginShine)"/>
+          <path d="M8 17.5 L13.5 23 L24.5 9"
+                fill="none" stroke="#ffffff" stroke-width="3.4"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="brand-text">Mist Validation</div>
+    </div>
+    <nav class="project-links">
+      @if (githubUrl(); as url) {
+        <a class="project-link" [href]="url" target="_blank" rel="noopener noreferrer">
+          <mat-icon>code</mat-icon>
+          GitHub
+          <mat-icon class="ext">open_in_new</mat-icon>
+        </a>
+      }
+      @if (dockerUrl(); as url) {
+        <a class="project-link" [href]="url" target="_blank" rel="noopener noreferrer">
+          <mat-icon>inventory_2</mat-icon>
+          Docker
+          <mat-icon class="ext">open_in_new</mat-icon>
+        </a>
+      }
+    </nav>
+  </header>
+
+  <main class="login-main">
+    <div class="login-box">
+      <div class="login-headline">
+        <h1>Sign in to Mist</h1>
+        <p>Validate post-deployment health across your Mist organization.</p>
       </div>
 
-      <form [formGroup]="form" (ngSubmit)="onSubmit()" style="display: flex; flex-direction: column; justify-content:  space-between; height: 380px;">
-        <!-- Auth mode toggle -->
-        <mat-button-toggle-group
-          class="toggle-group"
-          [value]="authMode()"
-          (change)="setMode($event.value)"
-          aria-label="Authentication mode"
-        >
-          <mat-button-toggle value="credentials">Username & Password</mat-button-toggle>
-          <mat-button-toggle value="token">API Token</mat-button-toggle>
-        </mat-button-toggle-group>
-        <div>
-        <!-- Cloud selection -->
-        <mat-form-field class="full-width" appearance="outline">
-          <mat-label>Cloud Region</mat-label>
-          <mat-select formControlName="cloud">
-            @for (cloud of clouds(); track cloud.value) {
-              <mat-option [value]="cloud.value">{{ cloud.label }}</mat-option>
-            }
-          </mat-select>
-        </mat-form-field>
-
-        <!-- Token mode -->
-        @if (authMode() === 'token') {
-          <mat-form-field class="full-width" appearance="outline">
-            <mat-label>API Token</mat-label>
-            <input
-              matInput
-              type="password"
-              formControlName="token"
-              placeholder="Paste your Mist API token"
-              autocomplete="current-password"
-            />
-            <mat-icon matSuffix>key</mat-icon>
-          </mat-form-field>
-        }
-
-        <!-- Credentials mode -->
-        @if (authMode() === 'credentials') {
-          <mat-form-field class="full-width" appearance="outline">
-            <mat-label>Email</mat-label>
-            <input
-              matInput
-              type="email"
-              formControlName="email"
-              placeholder="you@example.com"
-              autocomplete="username"
-            />
-            <mat-icon matSuffix>email</mat-icon>
-          </mat-form-field>
-          <mat-form-field class="full-width" appearance="outline">
-            <mat-label>Password</mat-label>
-            <input
-              matInput
-              type="password"
-              formControlName="password"
-              autocomplete="current-password"
-            />
-            <mat-icon matSuffix>lock</mat-icon>
-          </mat-form-field>
-        }
-
-        @if (errorMsg()) {
-          <div class="error-msg">{{ errorMsg() }}</div>
-        }
-</div>
-<div class="spacer" style="flex-grow: 1;"></div>
-        @if (loading()) {
-          <div class="spinner-row">
-            <mat-spinner diameter="24"></mat-spinner>
-            <span>Connecting...</span>
+      <div class="login-card">
+        <form [formGroup]="form" (ngSubmit)="onSubmit()">
+          <div class="auth-tabs">
+            <button
+              type="button"
+              class="auth-tab"
+              [class.active]="authMode() === 'credentials'"
+              (click)="setMode('credentials')"
+            >
+              Username &amp; password
+            </button>
+            <button
+              type="button"
+              class="auth-tab"
+              [class.active]="authMode() === 'token'"
+              (click)="setMode('token')"
+            >
+              API token
+            </button>
           </div>
-        } @else {
+
+          <label class="mv-field">
+            <span class="mv-field-label">Cloud region</span>
+            <select class="mv-input mv-select" formControlName="cloud">
+              @for (cloud of clouds(); track cloud.value) {
+                <option [value]="cloud.value">{{ cloud.label }}</option>
+              }
+            </select>
+          </label>
+
+          @if (authMode() === 'token') {
+            <label class="mv-field">
+              <span class="mv-field-label">API token</span>
+              <input
+                class="mv-input mv-input-mono"
+                type="password"
+                formControlName="token"
+                placeholder="Paste your Mist API token"
+                autocomplete="current-password"
+              />
+              <span class="mv-field-hint">Generate one in Mist → My Account → API Tokens.</span>
+            </label>
+          } @else {
+            <label class="mv-field">
+              <span class="mv-field-label">Email</span>
+              <input
+                class="mv-input"
+                type="email"
+                formControlName="email"
+                placeholder="you@example.com"
+                autocomplete="username"
+              />
+            </label>
+            <label class="mv-field">
+              <span class="mv-field-label">Password</span>
+              <input
+                class="mv-input"
+                type="password"
+                formControlName="password"
+                autocomplete="current-password"
+              />
+            </label>
+          }
+
+          @if (errorMsg()) {
+            <div class="error-msg">{{ errorMsg() }}</div>
+          }
+
           <button
             matButton="filled"
             color="primary"
-            class="full-width"
+            class="full-width submit-btn"
             type="submit"
-            [disabled]="form.invalid"
+            [disabled]="form.invalid || loading()"
           >
-            Connect
+            <span class="submit-content">
+              @if (loading()) {
+                <mat-spinner diameter="18"></mat-spinner>
+              }
+              <span>{{ loading() ? 'Connecting…' : 'Continue' }}</span>
+            </span>
           </button>
+        </form>
+
+        <div class="footer-note">
+          <mat-icon>shield</mat-icon>
+          Credentials never stored. Reports auto-purge after 24 h.
+        </div>
+      </div>
+
+      <div class="disclaimer" [class.open]="disclaimerOpen()">
+        <button
+          type="button"
+          class="disclaimer-toggle"
+          (click)="disclaimerOpen.set(!disclaimerOpen())"
+        >
+          <mat-icon>info</mat-icon>
+          <span>By signing in you accept the <strong>"as-is"</strong> warranty disclaimer.</span>
+          <mat-icon class="chevron">{{ disclaimerOpen() ? 'expand_less' : 'expand_more' }}</mat-icon>
+        </button>
+        @if (disclaimerOpen()) {
+          <div class="disclaimer-body">{{ disclaimerText }}</div>
         }
-      </form>
-    </mat-card-content>
-  </mat-card>
+      </div>
+    </div>
+  </main>
+
+  <footer class="login-foot">
+    <span>Open-source · MIT-licensed · Community-supported</span>
+    <span class="foot-links">
+      @if (githubUrl(); as url) {
+        <a [href]="url" target="_blank" rel="noopener noreferrer">Source</a>
+      }
+      @if (githubUrl()) {
+        <a [href]="githubUrl() + '/issues'" target="_blank" rel="noopener noreferrer">Issues</a>
+      }
+      @if (dockerUrl(); as url) {
+        <a [href]="url" target="_blank" rel="noopener noreferrer">Docker Hub</a>
+      }
+    </span>
+  </footer>
 </div>

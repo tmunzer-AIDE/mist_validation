@@ -67,15 +67,22 @@ def _make_mist_service(session: SessionData, org_id: str) -> MistService:
 @router.get("/reports/budget", response_model=BudgetResponse)
 async def check_budget(
     org_id: str,
+    site_id: str | None = None,
     include_config_errors: bool = False,
+    include_cable_tests: bool = False,
     session: SessionData = Depends(get_session),
 ):
     if org_id not in session.org_ids:
         raise HTTPException(status_code=403, detail="Access denied to this organization")
     mist = _make_mist_service(session, org_id)
-    budget = await validation_service.check_org_api_budget(
-        mist.get_session(), org_id, include_config_errors
-    )
+    if site_id:
+        budget = await validation_service.check_site_api_budget(
+            mist.get_session(), org_id, site_id, include_config_errors, include_cable_tests
+        )
+    else:
+        budget = await validation_service.check_org_api_budget(
+            mist.get_session(), org_id, include_config_errors
+        )
     return BudgetResponse(**budget)
 
 

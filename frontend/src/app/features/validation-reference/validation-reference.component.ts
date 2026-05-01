@@ -1,261 +1,211 @@
 import { Component, EventEmitter, Output } from '@angular/core';
-import { MatButtonModule } from '@angular/material/button';
-import { MatCardModule } from '@angular/material/card';
-import { MatIconModule } from '@angular/material/icon';
-import { StatusBadgeComponent } from '../../shared/components/status-badge/status-badge.component';
+import {
+  PageShellComponent,
+  ShellRoute,
+} from '../../shared/components/page-shell/page-shell.component';
 
 interface CheckDef {
   name: string;
-  id: string;
-  description: string;
+  scope: string;
   pass: string;
   warn: string;
   fail: string;
 }
 
 interface CheckSection {
-  title: string;
-  icon: string;
-  description: string;
+  category: string;
   checks: CheckDef[];
 }
 
 @Component({
   selector: 'app-validation-reference',
   standalone: true,
-  imports: [MatButtonModule, MatCardModule, MatIconModule, StatusBadgeComponent],
+  imports: [PageShellComponent],
   templateUrl: './validation-reference.component.html',
   styleUrl: './validation-reference.component.scss',
 })
 export class ValidationReferenceComponent {
-  @Output() back = new EventEmitter<void>();
+  @Output() navigate = new EventEmitter<ShellRoute>();
+
+  onShellNavigate(route: ShellRoute): void {
+    if (route !== 'validation_reference') {
+      this.navigate.emit(route);
+    }
+  }
 
   sections: CheckSection[] = [
     {
-      title: 'Site-Level Checks',
-      icon: 'location_on',
-      description: 'Checks applied to the site configuration, not tied to individual devices.',
+      category: 'Site',
       checks: [
         {
           name: 'Template Variables',
-          id: 'template_variables',
-          description:
-            'Verifies all Jinja2 variables referenced in templates (RF, network, gateway, site) and WLANs are defined in site settings. Portal built-in variables (code, duration) in smsMessageFormat are excluded.',
-          pass: 'Variable is defined in site vars',
-          warn: '',
-          fail: 'Variable is not defined in site vars',
+          scope: 'All Jinja2 vars in RF, Network, Gateway and Site templates resolve in site settings',
+          pass: 'All variables defined',
+          warn: '—',
+          fail: 'Any variable undefined',
         },
         {
           name: 'Device Events',
-          id: 'device_events',
-          description:
-            'Fetches device events from the last 24 hours and correlates trigger/clear event pairs to identify unresolved alerts.',
-          pass: 'Event has been cleared',
-          warn: '',
-          fail: 'Event is still triggered (not cleared)',
+          scope: '24-hour event correlation across the site',
+          pass: 'No active alarms',
+          warn: 'Cleared events present',
+          fail: 'Active uncleared trigger events',
         },
       ],
     },
     {
-      title: 'Common Device Checks',
-      icon: 'devices',
-      description: 'Checks applied to all device types (APs, switches, gateways).',
+      category: 'Per-device — common',
       checks: [
         {
           name: 'Device Name',
-          id: 'name_defined',
-          description: 'Verifies the device has a name configured.',
-          pass: 'Name is set',
-          warn: '',
-          fail: 'Name is empty or not set',
+          scope: 'AP / Switch / Gateway',
+          pass: 'Name set',
+          warn: '—',
+          fail: 'Empty / default',
         },
         {
           name: 'Firmware Version',
-          id: 'firmware_version',
-          description:
-            'Compares the running firmware against the recommended version. The recommended version follows a 3-tier override chain: baseline from Mist API, then org-level auto-upgrade, then site-level auto-upgrade. Each tier overrides the previous when enabled.',
-          pass: 'Running firmware matches the recommended version',
-          warn: 'Running firmware differs from recommended',
-          fail: 'AP only: firmware is tagged deprecated or alpha (when not in beta auto-upgrade mode)',
+          scope: 'AP / Switch / Gateway',
+          pass: 'Matches recommended (or auto-upgrade target)',
+          warn: 'Other supported version',
+          fail: 'Tagged deprecated or alpha',
         },
         {
           name: 'Connection Status',
-          id: 'connection_status',
-          description: 'Checks whether the device is connected to the Mist Cloud.',
-          pass: 'Device is connected',
-          warn: 'Device is upgrading or restarting',
-          fail: 'Device is disconnected or in any other state',
+          scope: 'AP / Switch / Gateway',
+          pass: 'Connected to Mist Cloud',
+          warn: '—',
+          fail: 'Disconnected',
         },
         {
           name: 'Configuration Status',
-          id: 'config_status',
-          description: 'Checks the latest configuration push event for success or failure.',
+          scope: 'AP / Switch / Gateway',
           pass: 'Latest config event succeeded',
-          warn: '',
-          fail: 'Latest config event indicates a failure',
+          warn: '—',
+          fail: 'Last config event failed',
         },
       ],
     },
     {
-      title: 'Access Point Checks',
-      icon: 'router',
-      description: 'Additional checks specific to Mist Access Points.',
+      category: 'Access Points',
       checks: [
         {
           name: 'Eth0 Port Speed',
-          id: 'eth0_port_speed',
-          description: 'Checks the AP uplink port speed.',
-          pass: 'Port speed >= 1 Gbps',
-          warn: 'Port speed < 1 Gbps',
-          fail: '',
+          scope: 'AP uplink',
+          pass: '≥ 1 Gbps',
+          warn: '< 1 Gbps',
+          fail: '—',
         },
         {
           name: 'Power Constrained',
-          id: 'power_constrained',
-          description: 'Checks if the AP is power-limited by its PoE source.',
-          pass: 'AP is not power constrained',
-          warn: 'AP is power constrained',
-          fail: '',
+          scope: 'AP PoE',
+          pass: 'Not power-limited',
+          warn: 'Power limited',
+          fail: '—',
         },
         {
           name: 'LLDP Neighbor',
-          id: 'lldp_neighbor',
-          description:
-            'Reports the upstream switch name and port detected via LLDP. Informational only (no pass/fail).',
-          pass: '',
-          warn: '',
-          fail: '',
+          scope: 'AP uplink',
+          pass: 'Neighbor reported',
+          warn: '—',
+          fail: '—',
         },
       ],
     },
     {
-      title: 'Switch Checks',
-      icon: 'lan',
-      description: 'Additional checks specific to Juniper switches.',
+      category: 'Switches & Gateways',
       checks: [
         {
-          name: 'Optic Modules',
-          id: 'optics_health',
-          description:
-            'Validates Rx/Tx power levels on SFP/SFP+ transceivers. Rx thresholds: pass >= -20 dBm, warn -25 to -20 dBm, fail < -25 dBm. Tx thresholds: pass >= -8 dBm, warn -12 to -8 dBm, fail < -12 dBm.',
-          pass: 'All optics within acceptable power levels',
-          warn: 'Some ports have low power readings',
-          fail: 'One or more ports below failure threshold',
+          name: 'Optic Modules — Rx',
+          scope: 'SFP/SFP+ Rx power',
+          pass: '≥ −20 dBm',
+          warn: '−25 to −20 dBm',
+          fail: '< −25 dBm',
         },
         {
-          name: 'Cable Tests (Optional)',
-          id: 'cable_tests',
-          description:
-            'Runs TDR cable diagnostics on copper ports. Requires write access and site group membership.',
-          pass: 'All cable pairs report normal',
-          warn: '',
-          fail: 'One or more cable pairs report a fault',
+          name: 'Optic Modules — Tx',
+          scope: 'SFP/SFP+ Tx power',
+          pass: '≥ −8 dBm',
+          warn: '−12 to −8 dBm',
+          fail: '< −12 dBm',
         },
         {
-          name: 'Config Command Errors (Optional)',
-          id: 'config_errors',
-          description:
-            'Checks for configuration errors on EX, QFX switches and SRX gateways. Identifies cases where Mist has excluded parts of the configuration due to errors (e.g. missing configuration blocks, invalid references). Requires opt-in via the "Include config command errors" checkbox. One API call per device.',
-          pass: 'No configuration errors found',
+          name: 'Cable Tests (optional)',
+          scope: 'TDR diagnostics on copper switch ports',
+          pass: 'All pairs report normal',
+          warn: '—',
+          fail: 'One or more pairs report a fault',
+        },
+        {
+          name: 'Config Command Errors (optional)',
+          scope: 'EX/QFX switches and SRX gateways',
+          pass: 'No configuration errors',
           warn: 'One or more configuration errors detected',
-          fail: '',
+          fail: '—',
         },
       ],
     },
     {
-      title: 'Virtual Chassis Checks',
-      icon: 'device_hub',
-      description:
-        'Checks for switch Virtual Chassis (VC) members. Applied per-member when a VC is detected.',
-      checks: [
-        {
-          name: 'Member Present',
-          id: 'member_present',
-          description: 'Verifies each VC member is present and has an active role.',
-          pass: 'Member is present with an active role',
-          warn: '',
-          fail: 'Member is not present',
-        },
-        {
-          name: 'Firmware Match',
-          id: 'firmware_match',
-          description: "Checks if the member's firmware matches the primary switch firmware.",
-          pass: 'Firmware matches primary',
-          warn: '',
-          fail: 'Firmware mismatch',
-        },
-        {
-          name: 'VC Ports UP',
-          id: 'vc_ports_up',
-          description: 'Checks the number of VC interconnect links that are UP per member.',
-          pass: '>= 2 VC links are UP',
-          warn: '',
-          fail: '< 2 VC links are UP',
-        },
-      ],
-    },
-    {
-      title: 'Gateway Checks',
-      icon: 'security',
-      description: 'Additional checks specific to SRX and SSR gateways.',
+      category: 'Gateways',
       checks: [
         {
           name: 'WAN Port Status',
-          id: 'wan_port_status',
-          description: 'Checks whether all configured WAN ports are UP.',
-          pass: 'All WAN ports are UP',
-          warn: 'Some WAN ports are DOWN',
-          fail: 'No WAN ports are UP',
+          scope: 'Configured WAN ports',
+          pass: 'All UP',
+          warn: '—',
+          fail: 'Any DOWN',
         },
         {
           name: 'LAN Port Status',
-          id: 'lan_port_status',
-          description: 'Checks whether all configured LAN ports are UP.',
-          pass: 'All LAN ports are UP',
-          warn: 'Some LAN ports are DOWN',
-          fail: 'No LAN ports are UP',
-        },
-        {
-          name: 'Optic Modules',
-          id: 'optics_health_gw',
-          description:
-            'Same thresholds as switch optics. Rx: pass >= -20 dBm, warn -25 to -20 dBm, fail < -25 dBm. Tx: pass >= -8 dBm, warn -12 to -8 dBm, fail < -12 dBm.',
-          pass: 'All optics within acceptable power levels',
-          warn: 'Some ports have low power readings',
-          fail: 'One or more ports below failure threshold',
-        },
-        {
-          name: 'Config Command Errors (Optional)',
-          id: 'config_errors_gw',
-          description:
-            'Checks for configuration errors on SRX gateways. Identifies cases where Mist has excluded parts of the configuration due to errors (e.g. missing configuration blocks, invalid references). Requires opt-in via the "Include config command errors" checkbox. One API call per device.',
-          pass: 'No configuration errors found',
-          warn: 'One or more configuration errors detected',
-          fail: '',
+          scope: 'Configured LAN ports',
+          pass: 'All UP',
+          warn: 'Any admin DOWN',
+          fail: 'Operational DOWN',
         },
       ],
     },
     {
-      title: 'Gateway Cluster Checks',
-      icon: 'sync_alt',
-      description:
-        'Checks for HA gateway clusters. Applied per-node when a cluster is detected.',
+      category: 'Virtual Chassis',
       checks: [
         {
-          name: 'Node Connected',
-          id: 'node_connected',
-          description: 'Verifies each cluster node is connected.',
-          pass: 'Node is connected',
-          warn: '',
-          fail: 'Node is not connected',
+          name: 'Member Present',
+          scope: 'Each VC member',
+          pass: 'Active role',
+          warn: '—',
+          fail: 'Missing / inactive',
         },
         {
           name: 'Firmware Match',
-          id: 'firmware_match_gw',
-          description: "Checks if the node's firmware matches the primary gateway firmware.",
-          pass: 'Firmware matches primary',
-          warn: '',
-          fail: 'Firmware mismatch',
+          scope: 'Each VC member',
+          pass: 'Matches primary',
+          warn: '—',
+          fail: 'Mismatch',
+        },
+        {
+          name: 'VC Ports UP',
+          scope: 'Per member',
+          pass: '≥ 2 interconnects UP',
+          warn: '1 UP',
+          fail: '0 UP',
+        },
+      ],
+    },
+    {
+      category: 'HA Gateway Cluster',
+      checks: [
+        {
+          name: 'Node Connected',
+          scope: 'Each cluster node',
+          pass: 'Connected',
+          warn: '—',
+          fail: 'Disconnected',
+        },
+        {
+          name: 'Firmware Match',
+          scope: 'Cluster node',
+          pass: 'Matches primary',
+          warn: '—',
+          fail: 'Mismatch',
         },
       ],
     },

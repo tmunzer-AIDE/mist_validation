@@ -1,14 +1,80 @@
-<div class="dialog-header">
-  <div>
-    <div class="device-name">{{ data.device.name }}</div>
-    <div class="device-meta">{{ data.device.model }} &bull; {{ data.device.mac }}</div>
+<div class="drawer-header">
+  <div class="dh-icon"><mat-icon>{{ deviceIcon }}</mat-icon></div>
+  <div class="dh-info">
+    <div class="dh-name-row">
+      <span class="dh-name mono">{{ data.device.name || 'Unnamed' }}</span>
+      <app-status-badge [status]="overallStatus" size="sm" />
+    </div>
+    <div class="dh-meta">
+      <span class="mono">{{ data.device.model }}</span>
+      <span>·</span>
+      <span class="mono">{{ data.device.mac }}</span>
+    </div>
   </div>
-  <button mat-icon-button (click)="close()">
+  <button mat-icon-button class="dh-close" (click)="close()" aria-label="Close">
     <mat-icon>close</mat-icon>
   </button>
 </div>
 
-<div class="content-area">
+<div class="drawer-body">
+  <!-- Identity -->
+  <div class="mv-card section-block">
+    <div class="section-title">Identity</div>
+    <div class="identity-grid">
+      <div class="kv">
+        <div class="kv-label">MAC address</div>
+        <div class="kv-value mono">{{ data.device.mac || '—' }}</div>
+      </div>
+      <div class="kv">
+        <div class="kv-label">Model</div>
+        <div class="kv-value mono">{{ data.device.model || '—' }}</div>
+      </div>
+      <div class="kv">
+        <div class="kv-label">Firmware running</div>
+        <div class="kv-value mono status-{{ getCheckStatus('firmware_version') }}">
+          {{ getCheckValue('firmware_version') || '—' }}
+        </div>
+      </div>
+      @if (getCheckExpected('firmware_version')) {
+        <div class="kv">
+          <div class="kv-label">Firmware recommended</div>
+          <div class="kv-value mono">{{ getCheckExpected('firmware_version') }}</div>
+        </div>
+      }
+      @if (data.type === 'ap' && getCheckValue('lldp_neighbor')) {
+        <div class="kv">
+          <div class="kv-label">LLDP uplink</div>
+          <div class="kv-value mono">{{ getCheckValue('lldp_neighbor') }}</div>
+        </div>
+      }
+      @if (data.type === 'ap' && getCheckValue('power_constrained')) {
+        <div class="kv">
+          <div class="kv-label">PoE</div>
+          <div class="kv-value status-{{ getCheckStatus('power_constrained') }}">
+            {{ getCheckValue('power_constrained') }}
+          </div>
+        </div>
+      }
+      @if (data.type === 'switch' && switchData.virtual_chassis?.members?.length) {
+        <div class="kv">
+          <div class="kv-label">Virtual chassis</div>
+          <div class="kv-value">
+            {{ switchData.virtual_chassis!.members!.length }} members
+            <span class="kv-sub">· {{ switchData.virtual_chassis!.status }}</span>
+          </div>
+        </div>
+      }
+      @if (data.type === 'gateway' && gatewayData.cluster?.members?.length) {
+        <div class="kv">
+          <div class="kv-label">HA cluster</div>
+          <div class="kv-value">
+            {{ gatewayData.cluster!.members!.length }} nodes
+            <span class="kv-sub">· {{ gatewayData.cluster!.status }}</span>
+          </div>
+        </div>
+      }
+    </div>
+  </div>
   <!-- Checks Summary -->
   @if (data.device.checks.length) {
   <div class="checks-overview">
@@ -121,7 +187,7 @@
       <td mat-cell *matCellDef="let r" class="pairs-cell">
         @if (r.pairs?.length) {
         @for (p of r.pairs; track p.pair) {
-        <div class="pair-chip" [class]="pairClass(p.status)">
+        <div class="pair-chip {{ pairClass(p.status) }}">
           {{ p.pair }}: {{ p.status }} ({{ p.length }})
         </div>
         }
@@ -174,6 +240,7 @@
   <div class="section-block">
   <div class="section-title">Optic Modules</div>
   <div class="optics-legend">Rx threshold: warn &lt; -20 dBm, fail &lt; -25 dBm &bull; Tx threshold: warn &lt; -8 dBm, fail &lt; -12 dBm</div>
+  <div class="optics-table-scroll">
   <table mat-table [dataSource]="sortedPortOptics">
     <ng-container matColumnDef="port_id">
       <th mat-header-cell *matHeaderCellDef>Port</th>
@@ -210,6 +277,7 @@
     <tr mat-header-row *matHeaderRowDef="opticsColumns"></tr>
     <tr mat-row *matRowDef="let row; columns: opticsColumns;"></tr>
   </table>
+  </div>
   </div>
   }
   }
@@ -459,6 +527,7 @@
   <div class="section-block">
   <div class="section-title">Optic Modules</div>
   <div class="optics-legend">Rx threshold: warn &lt; -20 dBm, fail &lt; -25 dBm &bull; Tx threshold: warn &lt; -8 dBm, fail &lt; -12 dBm</div>
+  <div class="optics-table-scroll">
   <table mat-table [dataSource]="sortedPortOptics">
     <ng-container matColumnDef="port_id">
       <th mat-header-cell *matHeaderCellDef>Port</th>
@@ -496,6 +565,7 @@
     <tr mat-row *matRowDef="let row; columns: opticsColumns;"></tr>
   </table>
   </div>
+  </div>
   }
   }
 
@@ -504,9 +574,9 @@
   <div class="section-block">
   <div class="section-title events-header">
     <span>Device Events (24h)</span>
-    <mat-slide-toggle [checked]="showAllEvents()" (change)="showAllEvents.set($event.checked)">
+    <mv-toggle [checked]="showAllEvents()" (change)="showAllEvents.set($event.checked)">
       Show cleared
-    </mat-slide-toggle>
+    </mv-toggle>
   </div>
   @if (filteredEvents().length === 0) {
   <div class="no-data">No open events.</div>
@@ -542,6 +612,10 @@
   }
 </div>
 
-<mat-dialog-actions align="end">
-  <button mat-button (click)="close()">Close</button>
-</mat-dialog-actions>
+<div class="drawer-footer">
+  <button matButton="text" (click)="copyDeviceId()">
+    <mat-icon>content_copy</mat-icon>
+    Copy device ID
+  </button>
+  <button matButton="outlined" (click)="close()">Close</button>
+</div>

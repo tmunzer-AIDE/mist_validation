@@ -4,8 +4,9 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatTableModule } from '@angular/material/table';
 
 import { MatIconModule } from '@angular/material/icon';
-import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { StatusBadgeComponent } from '../../shared/components/status-badge/status-badge.component';
+import { MvToggleComponent } from '../../shared/components/mv-toggle/mv-toggle.component';
+import { deviceTypeIcon, worstStatus } from '../../shared/utils/report-helpers';
 
 export interface DeviceCheck {
   check: string;
@@ -194,7 +195,7 @@ function comparePortIds(a: string, b: string): number {
     MatButtonModule,
     MatTableModule,
     MatIconModule,
-    MatSlideToggleModule,
+    MvToggleComponent,
     StatusBadgeComponent,
   ],
   templateUrl: './device-detail-dialog.component.html',
@@ -244,11 +245,13 @@ export class DeviceDetailDialogComponent {
   }
 
   get sortedCableTests(): CableTestResult[] {
-    return [...this.switchData.cable_tests].sort((a, b) => comparePortIds(a.port, b.port));
+    return [...(this.switchData.cable_tests ?? [])].sort((a, b) => comparePortIds(a.port, b.port));
   }
 
   get sortedLldpNeighbors(): LldpNeighbor[] {
-    return [...this.switchData.lldp_neighbors].sort((a, b) => comparePortIds(a.port_id, b.port_id));
+    return [...(this.switchData.lldp_neighbors ?? [])].sort((a, b) =>
+      comparePortIds(a.port_id, b.port_id),
+    );
   }
 
   // Sorted data sources for gateway tables
@@ -261,15 +264,21 @@ export class DeviceDetailDialogComponent {
   }
 
   get sortedWanPorts(): WanPort[] {
-    return [...this.gatewayData.wan_ports].sort((a, b) => comparePortIds(a.interface, b.interface));
+    return [...(this.gatewayData.wan_ports ?? [])].sort((a, b) =>
+      comparePortIds(a.interface, b.interface),
+    );
   }
 
   get sortedLanPorts(): LanPort[] {
-    return [...this.gatewayData.lan_ports].sort((a, b) => comparePortIds(a.interface, b.interface));
+    return [...(this.gatewayData.lan_ports ?? [])].sort((a, b) =>
+      comparePortIds(a.interface, b.interface),
+    );
   }
 
   get sortedNetworks(): NetworkInfo[] {
-    return [...this.gatewayData.networks].sort((a, b) => a.name.localeCompare(b.name));
+    return [...(this.gatewayData.networks ?? [])].sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
   }
 
   get sortedPortOptics(): PortOptics[] {
@@ -295,6 +304,31 @@ export class DeviceDetailDialogComponent {
   formatLldp(r: CableTestResult): string {
     const parts = [r.neighbor_system_name, r.neighbor_port_desc ? `(${r.neighbor_port_desc})` : ''].filter(Boolean);
     return parts.join(' ') || '—';
+  }
+
+  getCheckValue(id: string): string {
+    return this.data.device.checks.find((c) => c.check === id)?.value ?? '';
+  }
+
+  getCheckStatus(id: string): string {
+    return this.data.device.checks.find((c) => c.check === id)?.status ?? 'info';
+  }
+
+  getCheckExpected(id: string): string {
+    return this.data.device.checks.find((c) => c.check === id)?.expected ?? '';
+  }
+
+  get overallStatus(): string {
+    return worstStatus(this.data.device.checks ?? []);
+  }
+
+  get deviceIcon(): string {
+    return deviceTypeIcon(this.data.type);
+  }
+
+  copyDeviceId(): void {
+    const copyPromise = navigator.clipboard?.writeText(this.data.device.device_id);
+    void copyPromise?.catch(() => {});
   }
 
   pairClass(status: string): string {

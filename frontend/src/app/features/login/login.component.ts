@@ -1,15 +1,11 @@
 import { Component, EventEmitter, OnInit, Output, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
-import { MatButtonToggleModule } from '@angular/material/button-toggle';
-import { MatCardModule } from '@angular/material/card';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
-import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { MatSelectModule } from '@angular/material/select';
 import { MatIconModule } from '@angular/material/icon';
 import { ApiService } from '../../core/services/api.service';
+import { AppConfigService } from '../../core/services/app-config.service';
 import { AuthInfo } from '../../app.component';
 import { TwoFactorDialogComponent } from './two-factor-dialog.component';
 
@@ -20,7 +16,6 @@ interface LoginResponse {
   user_email: string;
   token_name: string;
   orgs: { id: string; name: string; role: string }[];
-  // 2FA fields (returned when 2FA is required)
   two_factor_required?: boolean;
   two_factor_passed?: boolean;
 }
@@ -30,12 +25,7 @@ interface LoginResponse {
   standalone: true,
   imports: [
     ReactiveFormsModule,
-    MatCardModule,
-    MatFormFieldModule,
-    MatInputModule,
     MatButtonModule,
-    MatButtonToggleModule,
-    MatSelectModule,
     MatProgressSpinnerModule,
     MatIconModule,
     MatDialogModule,
@@ -49,11 +39,24 @@ export class LoginComponent implements OnInit {
   private fb = inject(FormBuilder);
   private api = inject(ApiService);
   private dialog = inject(MatDialog);
+  private cfg = inject(AppConfigService);
 
   clouds = signal<{ value: string; label: string }[]>([]);
   authMode = signal<'token' | 'credentials'>('credentials');
   loading = signal(false);
   errorMsg = signal('');
+  disclaimerOpen = signal(false);
+
+  githubUrl = this.cfg.githubUrl;
+  dockerUrl = this.cfg.dockerUrl;
+
+  readonly disclaimerText =
+    'THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, ' +
+    'INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR ' +
+    'PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE ' +
+    'FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR ' +
+    'OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER ' +
+    'DEALINGS IN THE SOFTWARE.';
 
   form = this.fb.group({
     cloud: ['Global 01', Validators.required],
@@ -90,7 +93,6 @@ export class LoginComponent implements OnInit {
       return;
     }
 
-    // Resolve host from cloud selection
     const cloudVal = cloud ?? 'Global 01';
     const body =
       mode === 'token'
@@ -100,14 +102,10 @@ export class LoginComponent implements OnInit {
     this._doLogin(body, cloudVal);
   }
 
-  private _doLogin(
-    body: Record<string, unknown>,
-    cloud: string,
-  ): void {
+  private _doLogin(body: Record<string, unknown>, cloud: string): void {
     this.loading.set(true);
     this.api.post<LoginResponse>('auth/login', body).subscribe({
       next: (res) => {
-        // Check for 2FA
         if (res.two_factor_required && !res.two_factor_passed) {
           this.loading.set(false);
           this._open2FA(body, cloud);
@@ -133,17 +131,14 @@ export class LoginComponent implements OnInit {
     });
   }
 
-  private _open2FA(
-    loginBody: Record<string, unknown>,
-    cloud: string,
-  ): void {
+  private _open2FA(loginBody: Record<string, unknown>, cloud: string): void {
     const dialogRef = this.dialog.open(TwoFactorDialogComponent, {
       width: '360px',
       disableClose: true,
     });
 
     dialogRef.afterClosed().subscribe((code: string | undefined) => {
-      if (!code) return; // user cancelled
+      if (!code) return;
       this._doLogin({ ...loginBody, two_factor: code }, cloud);
     });
   }

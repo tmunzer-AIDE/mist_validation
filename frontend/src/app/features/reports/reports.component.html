@@ -1,0 +1,102 @@
+<app-page-shell
+  title="Reports"
+  subtitle="All validation runs · auto-purges after 24 h"
+  activeRoute="reports"
+  (navigate)="onShellNavigate($event)"
+>
+  <div class="mv-card reports-card">
+    <div class="toolbar">
+      <div class="search-wrap">
+        <mat-icon class="search-icon">search</mat-icon>
+        <input
+          class="mv-input search-input"
+          type="text"
+          [formControl]="searchCtrl"
+          placeholder="Search by run ID, site, or organization…"
+        />
+      </div>
+      <button mat-icon-button (click)="loadReports()" matTooltip="Refresh">
+        <mat-icon>refresh</mat-icon>
+      </button>
+    </div>
+
+    @if (loading()) {
+      <div class="state-loading"><mat-spinner diameter="28"></mat-spinner></div>
+    } @else if (filtered().length === 0) {
+      <div class="state-empty">
+        <mat-icon>assignment</mat-icon>
+        @if (searchCtrl.value) {
+          <div>No reports match "{{ searchCtrl.value }}".</div>
+        } @else {
+          <div>No reports yet.</div>
+          <div class="state-hint">Reports auto-purge after 24 hours.</div>
+        }
+      </div>
+    } @else {
+      <div class="table-scroll">
+        <table class="reports-table">
+          <thead>
+            <tr>
+              <th>Created</th>
+              <th>Scope</th>
+              <th class="th-num">Devices</th>
+              <th class="th-num">Score</th>
+              <th>Status</th>
+              <th class="th-num">Duration</th>
+              <th class="th-end"></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (r of filtered(); track r.id) {
+              <tr (click)="view(r)" class="row-clickable">
+                <td class="run-when">{{ r.created_at | date: 'MMM d, HH:mm' }}</td>
+                <td>
+                  <div class="scope-cell">
+                    <mat-icon class="scope-icon">{{ scopeIcon(r) }}</mat-icon>
+                    <div class="scope-text">
+                      <div class="scope-name">{{ scopeLabel(r) }}</div>
+                      @if (r.scope === 'site' && r.org_name) {
+                        <div class="scope-org">{{ r.org_name }}</div>
+                      }
+                    </div>
+                  </div>
+                </td>
+                <td class="td-num">
+                  @if (deviceCount(r) !== null) {
+                    {{ deviceCount(r) }}
+                  } @else {
+                    <span class="muted-dash">—</span>
+                  }
+                </td>
+                <td class="td-num">
+                  @if (score(r) !== null) {
+                    <span class="score-pill" [class]="'score-' + scoreColor(score(r))">{{ score(r) }}</span>
+                  } @else {
+                    <span class="muted-dash">—</span>
+                  }
+                </td>
+                <td>
+                  <app-status-badge [status]="r.status" size="sm" />
+                </td>
+                <td class="td-num mono muted">{{ duration(r) }}</td>
+                <td class="td-end">
+                  <div class="actions">
+                    <button
+                      mat-icon-button
+                      matTooltip="Delete report"
+                      class="delete-btn"
+                      (click)="delete(r, $event)"
+                    >
+                      <mat-icon>delete_outline</mat-icon>
+                    </button>
+                    <mat-icon class="chevron">chevron_right</mat-icon>
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </div>
+</app-page-shell>

@@ -1,137 +1,246 @@
-// ── Layout ──
+// ── Drawer header (sticky top) ──
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg);
+}
 
-.dialog-header {
+.drawer-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 20px 24px 0;
+  gap: 14px;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
 }
 
-.device-name {
-  font-size: 18px;
+.dh-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 9px;
+  background: var(--surface-2);
+  color: var(--ink-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+
+  mat-icon {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+  }
+}
+
+.dh-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.dh-name-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.dh-name {
+  font-size: 15px;
   font-weight: 600;
-  color: var(--text-primary);
-  letter-spacing: -0.01em;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.device-meta {
-  font-size: 13px;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
+.dh-meta {
+  font-size: 12px;
+  color: var(--muted-strong);
   margin-top: 4px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
 }
 
-.content-area {
-  padding: 0 24px 16px;
-  min-width: 560px;
-  max-height: 70vh;
+.dh-close {
+  flex-shrink: 0;
+  color: var(--muted-strong);
+
+  &:hover { color: var(--ink); }
+}
+
+// ── Drawer body (scrollable) ──
+.drawer-body {
+  flex: 1;
+  min-height: 0; // allow flex child to actually shrink below natural height so overflow triggers
+  overflow-x: clip; // prevent wide content (long tables, MACs, etc.) from breaking the drawer width
   overflow-y: auto;
+  padding: 18px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--bg);
+}
+
+// ── Section blocks (now styled as mv-card) ──
+.section-block {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: none;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  flex-shrink: 0; // don't compress in the drawer-body flex column — let body scroll instead
+}
+
+.section-title {
+  padding: 12px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: -0.005em;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
 }
 
 table {
   width: 100%;
+  font-size: 12.5px;
 }
 
-// ── Section containers — the key visual grouping fix ──
-
-.section-block {
-  // background: var(--bg-elevated);
-  // border: 1px solid var(--border-muted);
-  border-radius: 6px;
-  padding: 12px 16px 4px;
-  margin-top: 16px;
-  box-shadow: rgba(60, 64, 67, 0.3) 0px 1px 2px 0px, rgba(60, 64, 67, 0.15) 0px 1px 3px 1px;
-}
-
-.section-title {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-secondary);
-  text-transform: uppercase;
+.section-block th.mat-mdc-header-cell {
+  padding: 9px 12px !important;
+  white-space: nowrap;
+  font-size: 11px !important;
   letter-spacing: 0.06em;
-  margin: 0 0 8px;
-  padding: 0;
 }
 
-// ── Checks overview (top summary) ──
+.section-block td.mat-mdc-cell {
+  padding: 10px 12px !important;
+  font-size: 12.5px;
+  color: var(--ink);
+  vertical-align: middle;
+}
+
+// Mono cells (port IDs, MACs, serials, firmware) shouldn't wrap
+.section-block td.mono,
+.section-block td .mono {
+  white-space: nowrap;
+}
 
 .checks-overview {
-  padding-top: 16px;
+  display: contents;
 }
 
+// ── Identity card ──
+.identity-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  padding: 4px 0;
+
+  @media (max-width: 480px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.kv {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-soft);
+
+  &:last-child,
+  &:nth-last-child(2):nth-child(odd) {
+    border-bottom: 0;
+  }
+}
+
+.kv-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted-strong);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.kv-value {
+  font-size: 13px;
+  color: var(--ink);
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+.kv-sub {
+  color: var(--muted-strong);
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+// ── Checks summary pills ──
 .summary-strip {
   display: flex;
   gap: 8px;
   margin-bottom: 12px;
+  padding: 0;
 }
 
 .summary-pill {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 12px;
-  border-radius: 16px;
-  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
   font-weight: 600;
   line-height: 1;
 
   mat-icon {
-    font-size: 15px;
-    width: 15px;
-    height: 15px;
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
   }
 }
 
-.pill-pass {
-  background: var(--status-pass-bg);
-  color: var(--status-pass);
-}
-
-.pill-fail {
-  background: var(--status-fail-bg);
-  color: var(--status-fail);
-}
-
-.pill-warn {
-  background: var(--status-warn-bg);
-  color: var(--status-warn);
-}
+.pill-pass { background: var(--success-soft); color: var(--success-strong); }
+.pill-fail { background: var(--danger-soft); color: var(--danger-strong); }
+.pill-warn { background: var(--warn-soft); color: var(--warn-strong); }
 
 .checks-table {
   font-size: 13px;
 }
 
 // ── Empty state ──
-
 .no-data {
-  color: var(--text-tertiary);
+  color: var(--muted);
   font-size: 13px;
-  padding: 12px 0;
+  padding: 14px 16px;
   text-align: center;
 }
 
 // ── Events header ──
-
 .events-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  width: 100%;
 }
 
-// ── Members (ae sub-table) ──
-
+// ── Sub-tables / member sections ──
 .members-section {
-  margin-left: 24px;
-  margin-bottom: 8px;
+  padding: 8px 16px 12px 32px;
+  background: var(--surface-2);
 }
 
 .members-label {
   font-size: 11px;
   font-weight: 600;
-  color: var(--text-tertiary);
+  color: var(--muted-strong);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  padding: 8px 0 4px;
+  padding: 6px 0 4px;
 }
 
 .members-table {
@@ -139,34 +248,33 @@ table {
 }
 
 // ── Cluster details ──
-
 .cluster-details {
-  margin-top: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-soft);
 }
 
 .cluster-details .info-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px 24px;
-  margin-bottom: 12px;
+  gap: 10px 24px;
+  margin-bottom: 8px;
 }
 
 .cluster-details .info-cell label {
   font-size: 11px;
   font-weight: 600;
-  color: var(--text-tertiary);
+  color: var(--muted-strong);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
 
 .cluster-details .info-cell .value {
   font-size: 13px;
-  color: var(--text-primary);
+  color: var(--ink);
   margin-top: 2px;
 }
 
-// ── Cable test pairs ──
-
+// ── Cable-test pairs ──
 .pairs-cell {
   padding-top: 4px !important;
   padding-bottom: 4px !important;
@@ -174,80 +282,88 @@ table {
 
 .pair-chip {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 11.5px;
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   margin-bottom: 2px;
   white-space: nowrap;
+  display: inline-block;
 }
 
 .pair-normal {
-  background: rgba(46, 125, 50, 0.12);
-  color: #2e7d32;
+  background: var(--success-soft);
+  color: var(--success-strong);
 }
 
 .pair-fault {
-  background: rgba(198, 40, 40, 0.12);
-  color: #c62828;
+  background: var(--danger-soft);
+  color: var(--danger-strong);
 }
 
 // ── Utility ──
-
-.mono {
-  font-family: var(--font-mono);
-}
+.mono { font-family: var(--font-mono); }
 
 .sub-title {
   font-size: 11px;
   font-weight: 600;
-  color: var(--text-tertiary);
+  color: var(--muted-strong);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  padding: 8px 0 4px;
+  padding: 8px 16px 4px;
 }
 
 .reth-section {
-  margin-top: 4px;
+  border-top: 1px solid var(--border-soft);
+  padding-bottom: 6px;
 }
 
 .optics-legend {
   font-size: 11px;
-  color: var(--text-tertiary);
-  margin-bottom: 8px;
+  color: var(--muted-strong);
+  padding: 0 16px 8px;
 }
 
-// ── Inline status classes ──
-
-.status-pass {
-  color: var(--status-pass);
-  font-weight: 600;
+// Optics table has 7 columns (port/model/serial/part/rx/tx/temp) — wider than the
+// drawer can accommodate, so scope a horizontal scroll just to this wrapper rather
+// than letting the whole drawer body overflow.
+.optics-table-scroll {
+  overflow-x: auto;
 }
 
-.status-warn {
-  color: var(--status-warn);
-  font-weight: 600;
-}
-
-.status-fail {
-  color: var(--status-fail);
-  font-weight: 600;
-}
-
-.status-info {
-  color: var(--text-secondary);
-}
+// ── Inline status text colors (override global if present) ──
+.status-pass { color: var(--success-strong); font-weight: 600; }
+.status-warn { color: var(--warn-strong); font-weight: 600; }
+.status-fail { color: var(--danger-strong); font-weight: 600; }
+.status-info { color: var(--muted-strong); }
 
 // ── Config errors list ──
-
 .config-errors-list {
   margin: 0;
-  padding: 0 0 0 16px;
+  padding: 8px 16px 8px 32px;
   list-style: disc;
 }
 
 .config-error-item {
-  font-size: 13px;
+  font-size: 12.5px;
   font-family: var(--font-mono);
   padding: 2px 0;
   line-height: 1.5;
+}
+
+// ── Drawer footer (sticky bottom) ──
+.drawer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+
+  button mat-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+  }
 }

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true">
+  <defs>
+    <linearGradient id="mvLogoBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+    <linearGradient id="mvLogoShine" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="55%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="1" y="1" width="30" height="30" rx="7" fill="url(#mvLogoBg)"/>
+  <rect x="1" y="1" width="30" height="30" rx="7" fill="url(#mvLogoShine)"/>
+  <path
+    d="M8 17.5 L13.5 23 L24.5 9"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="3.4"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

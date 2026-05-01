@@ -2,23 +2,37 @@
 @if (selectedSiteId()) {
   <app-report-view
     [reportData]="$any(selectedSiteReport())"
+    [embedded]="true"
+    [parentLabel]="(report()?.org_name ?? '') + ' report'"
     (back)="backToOverview()"
+    (navigate)="navigate.emit($event)"
+  />
+} @else if (report() && (report()!.status === 'pending' || report()!.status === 'running')) {
+  <app-running-screen
+    [report]="$any(report())"
+    (navigate)="onShellNavigate($event)"
   />
 } @else {
-  <div class="page-container">
-    <!-- Topbar -->
-    <div class="topbar">
-      <button mat-icon-button (click)="back.emit()" matTooltip="Back to site selector">
-        <mat-icon>arrow_back</mat-icon>
-      </button>
-      <div class="topbar-title">
-        {{ report()?.org_name ?? 'Org Validation Report' }}
-      </div>
-      @if (report()) {
-        <div class="topbar-meta">
-          {{ report()!.created_at | date: 'MMM d, y HH:mm' }}
-        </div>
-        <app-status-badge [status]="report()!.status" />
+  <app-page-shell
+    [title]="report()?.org_name ?? 'Org validation report'"
+    [subtitle]="(report() ? (report()!.created_at | date: 'MMM d, y HH:mm') : '') ?? ''"
+    activeRoute="site_selector"
+    [breadcrumb]="[
+      { label: 'Run validation', route: 'site_selector' },
+      { label: report()?.org_name ?? 'Org report' }
+    ]"
+    (navigate)="onShellNavigate($event)"
+  >
+    <div shell-actions>
+      @if (report() && report()!.status === 'completed') {
+        <button matButton="outlined" (click)="exportCsv()">
+          <mat-icon>download</mat-icon>
+          CSV
+        </button>
+        <button matButton="filled" color="primary" (click)="exportPdf()">
+          <mat-icon>picture_as_pdf</mat-icon>
+          PDF report
+        </button>
       }
     </div>
 
@@ -28,255 +42,382 @@
       </div>
     }
 
-    <!-- Progress view -->
-    @if (report() && (report()!.status === 'pending' || report()!.status === 'running')) {
-      <mat-card class="section">
-        <div class="progress-header">
-          <div class="progress-title">Running org validation...</div>
-          @if (report()!.progress.overall_total > 0) {
-            <div class="progress-count">
-              {{ report()!.progress.overall_completed }} / {{ report()!.progress.overall_total }}
-            </div>
-          }
-        </div>
-
-        <mat-progress-bar
-          [mode]="report()!.progress.overall_total === 0 ? 'indeterminate' : 'determinate'"
-          [value]="progressPercent()"
-        ></mat-progress-bar>
-
-        <div class="progress-steps">
-          @for (step of report()!.progress.steps; track step.id) {
-            <div class="step-row">
-              <mat-icon class="step-icon" [class]="stepIconClass(step.status)">
-                {{ stepIcon(step.status) }}
-              </mat-icon>
-              <div>
-                <div class="step-label">{{ step.label }}</div>
-                @if (step.message) {
-                  <div class="step-msg">{{ step.message }}</div>
-                }
-              </div>
-            </div>
-          }
-        </div>
-      </mat-card>
-    }
-
     <!-- Failed view -->
     @if (report() && report()!.status === 'failed') {
-      <mat-card>
+      <div class="mv-card">
         <div class="failed-view">
           <mat-icon class="failed-icon">error_outline</mat-icon>
-          <div class="failed-title">Report Failed</div>
+          <div class="failed-title">Report failed</div>
           <div class="failed-msg">
             {{ report()?.error ?? 'An unexpected error occurred during validation.' }}
           </div>
-          <button mat-stroked-button style="margin-top:24px;" (click)="back.emit()">
-            Back to Site Selector
+          <button matButton="outlined" style="margin-top:24px;" (click)="back.emit()">
+            Back to site selector
           </button>
         </div>
-      </mat-card>
+      </div>
     }
 
     <!-- Completed view -->
     @if (report() && report()!.status === 'completed' && report()!.result) {
-      <!-- Export buttons -->
-      <div class="export-row">
-        <button matButton="tonal" (click)="exportPdf()">
-          <mat-icon>picture_as_pdf</mat-icon>
-          Export PDF
-        </button>
-        <button matButton="tonal" (click)="exportCsv()">
-          <mat-icon>download</mat-icon>
-          Export CSV
-        </button>
-      </div>
+      <!-- Score band -->
+      <div class="mv-card score-band">
+        <div class="score-grid">
+          <div class="score-cell">
+            <div class="score-eyebrow">Organization score</div>
+            <div class="score-value" [class]="'status-' + scoreStatus()">
+              <span class="score-num">{{ scoreValue() }}</span><span class="score-of">/100</span>
+            </div>
+            <app-status-badge [status]="scoreStatus()" [label]="scoreLabel()" size="sm" />
+          </div>
+          <div class="stats-grid">
+            <div class="big-stat">
+              <div class="big-stat-label"><mat-icon>business</mat-icon> Sites</div>
+              <div class="big-stat-value">{{ report()!.result!.org_info.site_count }}</div>
+              <div class="big-stat-sub">scanned</div>
+            </div>
+            <div class="big-stat">
+              <div class="big-stat-label"><mat-icon>hub</mat-icon> Devices</div>
+              <div class="big-stat-value">{{ totalDevices() }}</div>
+              <div class="big-stat-sub">total</div>
+            </div>
+            <div class="big-stat">
+              <div class="big-stat-label"><mat-icon>warning</mat-icon> Warnings</div>
+              <div class="big-stat-value status-warn">{{ report()!.result!.summary.warn }}</div>
+              <div class="big-stat-sub">advisory</div>
+            </div>
+            <div class="big-stat">
+              <div class="big-stat-label"><mat-icon>cancel</mat-icon> Failures</div>
+              <div class="big-stat-value status-fail">{{ report()!.result!.summary.fail }}</div>
+              <div class="big-stat-sub">critical</div>
+            </div>
+          </div>
+        </div>
 
-      <!-- Summary row -->
-      <div class="summary-row">
-        <!-- Org Info -->
-        <mat-card class="summary-card">
-          <div class="card-inner">
-            <div class="card-title">Organization Info</div>
-            <div class="info-grid">
-              <div class="info-cell">
-                <div class="info-label">Organization</div>
-                <div class="info-value">{{ report()!.result!.org_info.org_name }}</div>
-              </div>
-              <div class="info-cell">
-                <div class="info-label">Sites</div>
-                <div class="info-value">{{ report()!.result!.org_info.site_count }}</div>
-              </div>
-              <div class="info-cell">
-                <div class="info-label">Total Devices</div>
-                <div class="info-value">
-                  {{ report()!.result!.org_info.device_counts.aps + report()!.result!.org_info.device_counts.switches + report()!.result!.org_info.device_counts.gateways }}
+        @if (byTypeStats().length > 0) {
+          <div class="score-rollup">
+            @for (s of byTypeStats(); track s.type) {
+              <div class="rollup-cell">
+                <div class="rollup-icon"><mat-icon>{{ s.icon }}</mat-icon></div>
+                <div class="rollup-info">
+                  <div class="rollup-label">{{ s.label }}</div>
+                  <div class="rollup-value">
+                    {{ s.pass }}<span class="muted"> / {{ s.total }} pass</span>
+                  </div>
+                </div>
+                <div class="rollup-bar">
+                  @if (s.pass > 0) {
+                    <div class="seg seg-pass" [style.width.%]="(s.pass / s.total) * 100"></div>
+                  }
+                  @if (s.warn > 0) {
+                    <div class="seg seg-warn" [style.width.%]="(s.warn / s.total) * 100"></div>
+                  }
+                  @if (s.fail > 0) {
+                    <div class="seg seg-fail" [style.width.%]="(s.fail / s.total) * 100"></div>
+                  }
                 </div>
               </div>
-            </div>
-            <div class="device-summary">
-              <div class="device-type">
-                <span class="device-count">{{ report()!.result!.org_info.device_counts.aps }}</span>
-                <span class="device-label">APs</span>
-              </div>
-              <div class="device-type">
-                <span class="device-count">{{ report()!.result!.org_info.device_counts.switches }}</span>
-                <span class="device-label">Switches</span>
-              </div>
-              <div class="device-type">
-                <span class="device-count">{{ report()!.result!.org_info.device_counts.gateways }}</span>
-                <span class="device-label">Gateways</span>
-              </div>
-            </div>
+            }
           </div>
-        </mat-card>
-
-        <!-- Status summary -->
-        <mat-card class="summary-card">
-          <div class="card-inner">
-            <div class="card-title">Check Status Summary</div>
-            <div class="status-pills">
-              <div class="status-pill pill-fail">
-                <span class="pill-count">{{ report()!.result!.summary.fail }}</span>
-                <span class="pill-label">Failures</span>
-              </div>
-              <div class="status-pill pill-warn">
-                <span class="pill-count">{{ report()!.result!.summary.warn }}</span>
-                <span class="pill-label">Warnings</span>
-              </div>
-              <div class="status-pill pill-pass">
-                <span class="pill-count">{{ report()!.result!.summary.pass }}</span>
-                <span class="pill-label">Passing</span>
-              </div>
-              <div class="status-pill pill-info">
-                <span class="pill-count">{{ report()!.result!.summary.info }}</span>
-                <span class="pill-label">Info</span>
-              </div>
-            </div>
-          </div>
-        </mat-card>
+        }
       </div>
 
-      <!-- Filter bar -->
-      <div class="filter-bar">
-        <div class="filter-title">Sites ({{ filteredSites().length }})</div>
-        <mat-slide-toggle
-          [checked]="showEmptySites()"
-          (change)="showEmptySites.set($event.checked)"
-          class="empty-toggle"
-        >
-          Show sites without devices
-        </mat-slide-toggle>
-        <mat-form-field appearance="outline" class="filter-select">
-          <mat-select [value]="statusFilter()" (selectionChange)="statusFilter.set($event.value)">
-            <mat-option value="fail">Failed sites</mat-option>
-            <mat-option value="warn">Warning sites</mat-option>
-            <mat-option value="pass">Passing sites</mat-option>
-            <mat-option value="info">Info only</mat-option>
-            <mat-option value="all">All sites</mat-option>
-          </mat-select>
-        </mat-form-field>
-        <mat-form-field appearance="outline" class="search-field">
-          <mat-icon matPrefix>search</mat-icon>
-          <input matInput placeholder="Search sites..." [ngModel]="searchQuery()" (ngModelChange)="searchQuery.set($event)" />
-        </mat-form-field>
+      <!-- Needs attention -->
+      @if (problematicSites().length > 0) {
+        <div class="mv-card needs-attention">
+          <div class="na-head">
+            <div class="na-head-left">
+              <mat-icon class="na-icon">warning_amber</mat-icon>
+              <h3 class="na-title">Sites needing attention</h3>
+              <span class="na-count">{{ problematicSites().length }}</span>
+            </div>
+          </div>
+          <div class="na-list">
+            @for (s of problematicSites(); track s.site_id) {
+              <button
+                class="na-row"
+                type="button"
+                (click)="selectSite(s.site_id)"
+              >
+                <span class="na-dot" [class]="'dot-' + s.worst_status"></span>
+                <div class="na-text">
+                  <div class="na-name">{{ s.site_name }}</div>
+                  <div class="na-hint">{{ siteFindingHint(s) }}</div>
+                </div>
+                <app-status-badge [status]="s.worst_status" size="sm" />
+                <mat-icon class="na-chev">chevron_right</mat-icon>
+              </button>
+            }
+          </div>
+        </div>
+      }
+
+      <!-- Viz tabs -->
+      <div class="viz-toolbar">
+        <div class="viz-tabs">
+          <button
+            type="button"
+            class="viz-tab"
+            [class.active]="vizMode() === 'scorecard'"
+            (click)="setVizMode('scorecard')"
+          >
+            <mat-icon>insights</mat-icon> Scorecard
+          </button>
+          <button
+            type="button"
+            class="viz-tab"
+            [class.active]="vizMode() === 'sites'"
+            (click)="setVizMode('sites')"
+          >
+            <mat-icon>location_on</mat-icon> Sites
+          </button>
+        </div>
+        <div class="viz-count">
+          {{ report()!.result!.org_info.site_count }} sites · {{ totalDevices() }} devices
+        </div>
       </div>
 
-      <!-- Sites table -->
-      @if (filteredSites().length === 0) {
-        <mat-card>
-          <div class="no-data">
-            No sites match the current filter.
+      @if (vizMode() === 'scorecard') {
+        <div class="scorecard-grid">
+          <!-- Check coverage across all sites -->
+          <div class="mv-card">
+            <div class="scorecard-head">
+              <span>Check coverage</span>
+              <span class="head-count">across {{ allDevices().length }} devices</span>
+            </div>
+            <div class="coverage-list">
+              @for (c of checkCoverage(); track c.check) {
+                <div class="coverage-row">
+                  <div class="cov-name">{{ c.label }}</div>
+                  <div class="cov-bar">
+                    @if (c.pass > 0) {
+                      <div class="seg seg-pass" [style.width.%]="(c.pass / c.total) * 100"></div>
+                    }
+                    @if (c.warn > 0) {
+                      <div class="seg seg-warn" [style.width.%]="(c.warn / c.total) * 100"></div>
+                    }
+                    @if (c.fail > 0) {
+                      <div class="seg seg-fail" [style.width.%]="(c.fail / c.total) * 100"></div>
+                    }
+                  </div>
+                  <div class="cov-count">
+                    {{ c.pass }}<span class="muted"> / {{ c.total }}</span>
+                  </div>
+                </div>
+              }
+              @if (checkCoverage().length === 0) {
+                <div class="state-empty-small">No checks recorded.</div>
+              }
+            </div>
           </div>
-        </mat-card>
-      } @else {
-        <table mat-table [dataSource]="filteredSites()" class="sites-table">
-          <ng-container matColumnDef="site_name">
-            <th mat-header-cell *matHeaderCellDef (click)="sort('site_name')" class="sortable">
-              Site Name
-              @if (sortColumn() === 'site_name') {
-                <mat-icon class="sort-icon">{{ sortDirection() === 'asc' ? 'arrow_upward' : 'arrow_downward' }}</mat-icon>
-              }
-            </th>
-            <td mat-cell *matCellDef="let row" class="site-name-cell">{{ row.site_name }}</td>
-          </ng-container>
+        </div>
 
-          <ng-container matColumnDef="variables">
-            <th mat-header-cell *matHeaderCellDef (click)="sort('variables')" class="sortable">Variables</th>
-            <td mat-cell *matCellDef="let row">
-              @if (row.variables_total === 0) {
-                <span class="no-devices">&mdash;</span>
-              } @else if (row.variables_missing > 0) {
-                <span class="mini-badge mini-fail">{{ row.variables_defined }}/{{ row.variables_total }}</span>
-              } @else {
-                <span class="mini-badge mini-pass">{{ row.variables_defined }}/{{ row.variables_total }}</span>
-              }
-            </td>
-          </ng-container>
+        <!-- Missing template variables -->
+        @if (missingVariables().length > 0) {
+          <div class="mv-card vars-card">
+            <div class="scorecard-head">
+              <span>Missing template variables</span>
+              <span class="head-count">
+                {{ missingVariables().length }} undefined ·
+                {{ totalMissingOccurrences() }} site occurrence{{
+                  totalMissingOccurrences() === 1 ? '' : 's'
+                }}
+              </span>
+            </div>
+            <div class="vars-table-wrap">
+              <table class="vars-table">
+                <thead>
+                  <tr>
+                    <th>Variable</th>
+                    <th>Missing in</th>
+                    <th class="th-end">Sites</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (v of missingVariables(); track v.variable) {
+                    <tr class="row-fail">
+                      <td class="mono col-var">{{ formatVar(v.variable) }}</td>
+                      <td class="col-locs">
+                        <div class="loc-chips">
+                          @for (s of v.missing_sites; track s) {
+                            <span class="loc-chip miss-chip">{{ s }}</span>
+                          }
+                        </div>
+                      </td>
+                      <td class="td-end col-counts">
+                        <span class="count-fail">{{ v.missing_sites.length }}</span>
+                        @if (v.defined_count > 0) {
+                          <span class="count-defined"
+                            >+ {{ v.defined_count }} defined</span
+                          >
+                        }
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+        }
+      }
 
-          <ng-container matColumnDef="aps">
-            <th mat-header-cell *matHeaderCellDef (click)="sort('aps')" class="sortable">APs</th>
-            <td mat-cell *matCellDef="let row">
-              @if (row.ap_counts.total === 0) {
-                <span class="no-devices">&mdash;</span>
-              } @else {
-                @if (row.ap_counts.fail > 0) {
-                  <span class="mini-badge mini-fail">{{ row.ap_counts.fail }}</span>
-                }
-                @if (row.ap_counts.warn > 0) {
-                  <span class="mini-badge mini-warn">{{ row.ap_counts.warn }}</span>
-                }
-                @if (row.ap_counts.pass > 0) {
-                  <span class="mini-badge mini-pass">{{ row.ap_counts.pass }}</span>
-                }
-              }
-            </td>
-          </ng-container>
+      @if (vizMode() === 'sites') {
+        <div class="mv-card">
+          <div class="sites-toolbar">
+            <div class="filter-tabs">
+              <button
+                type="button"
+                class="filter-tab"
+                [class.active]="statusFilter() === 'all'"
+                (click)="statusFilter.set('all')"
+              >
+                All <span class="filter-count">{{ siteEntries().length }}</span>
+              </button>
+              <button
+                type="button"
+                class="filter-tab"
+                [class.active]="statusFilter() === 'fail'"
+                (click)="statusFilter.set('fail')"
+              >
+                Failed
+              </button>
+              <button
+                type="button"
+                class="filter-tab"
+                [class.active]="statusFilter() === 'warn'"
+                (click)="statusFilter.set('warn')"
+              >
+                Warning
+              </button>
+              <button
+                type="button"
+                class="filter-tab"
+                [class.active]="statusFilter() === 'pass'"
+                (click)="statusFilter.set('pass')"
+              >
+                Passing
+              </button>
+            </div>
+            <div class="toolbar-spacer"></div>
+            <mv-toggle
+              [checked]="showEmptySites()"
+              (change)="showEmptySites.set($event.checked)"
+            >
+              Show empty sites
+            </mv-toggle>
+            <div class="search-wrap">
+              <mat-icon class="search-icon">search</mat-icon>
+              <input
+                class="mv-input search-input"
+                type="text"
+                placeholder="Search sites…"
+                [ngModel]="searchQuery()"
+                (ngModelChange)="searchQuery.set($event)"
+              />
+            </div>
+          </div>
 
-          <ng-container matColumnDef="switches">
-            <th mat-header-cell *matHeaderCellDef (click)="sort('switches')" class="sortable">Switches</th>
-            <td mat-cell *matCellDef="let row">
-              @if (row.sw_counts.total === 0) {
-                <span class="no-devices">&mdash;</span>
-              } @else {
-                @if (row.sw_counts.fail > 0) {
-                  <span class="mini-badge mini-fail">{{ row.sw_counts.fail }}</span>
-                }
-                @if (row.sw_counts.warn > 0) {
-                  <span class="mini-badge mini-warn">{{ row.sw_counts.warn }}</span>
-                }
-                @if (row.sw_counts.pass > 0) {
-                  <span class="mini-badge mini-pass">{{ row.sw_counts.pass }}</span>
-                }
-              }
-            </td>
-          </ng-container>
-
-          <ng-container matColumnDef="gateways">
-            <th mat-header-cell *matHeaderCellDef (click)="sort('gateways')" class="sortable">Gateways</th>
-            <td mat-cell *matCellDef="let row">
-              @if (row.gw_counts.total === 0) {
-                <span class="no-devices">&mdash;</span>
-              } @else {
-                @if (row.gw_counts.fail > 0) {
-                  <span class="mini-badge mini-fail">{{ row.gw_counts.fail }}</span>
-                }
-                @if (row.gw_counts.warn > 0) {
-                  <span class="mini-badge mini-warn">{{ row.gw_counts.warn }}</span>
-                }
-                @if (row.gw_counts.pass > 0) {
-                  <span class="mini-badge mini-pass">{{ row.gw_counts.pass }}</span>
-                }
-              }
-            </td>
-          </ng-container>
-
-          <tr mat-header-row *matHeaderRowDef="siteColumns"></tr>
-          <tr mat-row *matRowDef="let row; columns: siteColumns;" (click)="selectSite(row.site_id)" class="clickable-row"></tr>
-        </table>
-        <div class="click-hint">Click a site row to view the full site report</div>
+          @if (filteredSites().length === 0) {
+            <div class="no-data">No sites match the current filter.</div>
+          } @else {
+            <div class="table-scroll">
+              <table class="sites-table">
+                <thead>
+                  <tr>
+                    <th class="sortable" (click)="sort('site_name')">
+                      Site
+                      @if (sortColumn() === 'site_name') {
+                        <mat-icon class="sort-icon">{{
+                          sortDirection() === 'asc' ? 'arrow_upward' : 'arrow_downward'
+                        }}</mat-icon>
+                      }
+                    </th>
+                    <th class="sortable th-num" (click)="sort('variables')">Variables</th>
+                    <th class="sortable th-num" (click)="sort('aps')">APs</th>
+                    <th class="sortable th-num" (click)="sort('switches')">Switches</th>
+                    <th class="sortable th-num" (click)="sort('gateways')">Gateways</th>
+                    <th class="th-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (row of filteredSites(); track row.site_id) {
+                    <tr (click)="selectSite(row.site_id)" class="row-clickable">
+                      <td class="site-name-cell">{{ row.site_name }}</td>
+                      <td class="td-num">
+                        @if (row.variables_total === 0) {
+                          <span class="muted-dash">—</span>
+                        } @else if (row.variables_missing > 0) {
+                          <span class="mini-badge mini-fail"
+                            >{{ row.variables_defined }}/{{ row.variables_total }}</span
+                          >
+                        } @else {
+                          <span class="mini-badge mini-pass"
+                            >{{ row.variables_defined }}/{{ row.variables_total }}</span
+                          >
+                        }
+                      </td>
+                      <td class="td-num">
+                        @if (row.ap_counts.total === 0) {
+                          <span class="muted-dash">—</span>
+                        } @else {
+                          <span class="cell-counts">
+                            @if (row.ap_counts.fail > 0) {
+                              <span class="mini-badge mini-fail">{{ row.ap_counts.fail }}</span>
+                            }
+                            @if (row.ap_counts.warn > 0) {
+                              <span class="mini-badge mini-warn">{{ row.ap_counts.warn }}</span>
+                            }
+                            @if (row.ap_counts.pass > 0) {
+                              <span class="mini-badge mini-pass">{{ row.ap_counts.pass }}</span>
+                            }
+                          </span>
+                        }
+                      </td>
+                      <td class="td-num">
+                        @if (row.sw_counts.total === 0) {
+                          <span class="muted-dash">—</span>
+                        } @else {
+                          <span class="cell-counts">
+                            @if (row.sw_counts.fail > 0) {
+                              <span class="mini-badge mini-fail">{{ row.sw_counts.fail }}</span>
+                            }
+                            @if (row.sw_counts.warn > 0) {
+                              <span class="mini-badge mini-warn">{{ row.sw_counts.warn }}</span>
+                            }
+                            @if (row.sw_counts.pass > 0) {
+                              <span class="mini-badge mini-pass">{{ row.sw_counts.pass }}</span>
+                            }
+                          </span>
+                        }
+                      </td>
+                      <td class="td-num">
+                        @if (row.gw_counts.total === 0) {
+                          <span class="muted-dash">—</span>
+                        } @else {
+                          <span class="cell-counts">
+                            @if (row.gw_counts.fail > 0) {
+                              <span class="mini-badge mini-fail">{{ row.gw_counts.fail }}</span>
+                            }
+                            @if (row.gw_counts.warn > 0) {
+                              <span class="mini-badge mini-warn">{{ row.gw_counts.warn }}</span>
+                            }
+                            @if (row.gw_counts.pass > 0) {
+                              <span class="mini-badge mini-pass">{{ row.gw_counts.pass }}</span>
+                            }
+                          </span>
+                        }
+                      </td>
+                      <td class="td-right">
+                        <app-status-badge [status]="row.worst_status" size="sm" />
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </div>
       }
     }
-  </div>
+  </app-page-shell>
 }

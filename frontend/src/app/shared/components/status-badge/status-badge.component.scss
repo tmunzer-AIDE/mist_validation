@@ -1,42 +1,69 @@
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  font-size: 11px;
-  font-weight: 500;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
   letter-spacing: 0.01em;
-  padding: 2px 8px;
-  border-radius: 3px;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
   white-space: nowrap;
-  line-height: 1.2;
+  line-height: 1.4;
+
+  &::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: var(--radius-pill);
+    background: currentColor;
+    flex-shrink: 0;
+  }
 
   &.status-pass,
   &.status-completed {
-    background: var(--status-pass-bg);
-    color: #1a6b00;
+    background: var(--success-soft);
+    color: var(--success-strong);
   }
 
   &.status-fail,
   &.status-failed {
-    background: var(--status-fail-bg);
-    color: #870101;
+    background: var(--danger-soft);
+    color: var(--danger-strong);
   }
 
   &.status-warn {
-    background: var(--status-warn-bg);
-    color: #92400e;
+    background: var(--warn-soft);
+    color: var(--warn-strong);
+  }
+
+  &.status-running {
+    background: var(--accent-soft);
+    color: var(--accent-strong);
   }
 
   &.status-info,
-  &.status-running,
   &.status-pending {
-    background: var(--status-info-bg);
-    color: #015c95;
+    background: var(--info-soft);
+    color: var(--info-strong);
+  }
+
+  &.status-neutral {
+    background: var(--surface-2);
+    color: var(--muted-strong);
   }
 }
 
 .badge-icon {
-  font-size: 14px;
-  width: 14px;
-  height: 14px;
+  display: none;
+}
+
+.badge--sm {
+  font-size: 11px;
+  padding: 2px 7px;
+  gap: 5px;
+
+  &::before {
+    width: 5px;
+    height: 5px;
+  }
 }

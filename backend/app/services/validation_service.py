@@ -11,6 +11,7 @@ import functools
 import json
 import logging
 import re
+import time
 from datetime import datetime, timezone
 
 import mistapi
@@ -96,7 +97,27 @@ _STEPS = [
 
 
 class _ProgressTracker:
-    """Manages structured step-based progress and broadcasts via callback."""
+    """Manages structured step-based progress and broadcasts via callback.
+
+    ETA model:
+        eta_seconds = remaining_api_calls × API_SECONDS_PER_CALL + cable_remaining
+
+    `remaining_api_calls` = sum of registered api costs across steps that aren't completed.
+
+    Cable contribution depends on the cable_tests step status:
+      - pending  → predicted duration: `max_ports × 25` (steady, before the step starts)
+      - running  → anchored countdown: `max(0, _cable_test_finish_at - now)`
+      - completed→ 0
+    Switches test in parallel and ports within a switch are sequential, so the busiest
+    switch sets the wall-clock floor. The pending→running handoff is smooth because both
+    formulas evaluate to `max_ports × 25` at the moment the anchor is set; the anchor then
+    counts down with elapsed time, so a port completing on the *short* device can't push
+    the ETA back up (which the per-device-remaining model wrongly did, ignoring the
+    elapsed time of the long device's in-progress port).
+    """
+
+    API_SECONDS_PER_CALL = 1
+    CABLE_SECONDS_PER_PORT = 25
 
     def __init__(self, report_id: str, progress_callback, steps: list[tuple[str, str]] | None = None) -> None:
         self.report_id = report_id
@@ -107,6 +128,11 @@ class _ProgressTracker:
         }
         self.overall_completed = 0
         self.overall_total = 0  # 0 = discovery phase (indeterminate)
+        self._step_api_cost: dict[str, int] = {}
+        self._cable_test_max_ports = 0  # busiest switch's port count — sets cable wall-clock
+        self._cable_test_finish_at: float | None = None  # monotonic seconds; set at step start
+        self._cable_test_total = 0
+        self._cable_tests_done = 0
 
     async def start_step(self, step_id: str, message: str = "") -> None:
         self.steps[step_id]["status"] = "running"
@@ -117,7 +143,7 @@ class _ProgressTracker:
         self.steps[step_id]["status"] = "completed"
         self.steps[step_id]["message"] = message
         if increment and self.overall_total > 0:
-            self.overall_completed += 1
+            self.overall_completed = min(self.overall_completed + 1, self.overall_total)
         await self._broadcast()
 
     async def update_step(self, step_id: str, message: str) -> None:
@@ -135,13 +161,69 @@ class _ProgressTracker:
         Execution-phase steps: aps, switches, gateways, cable_tests (N ports), config_errors.
         If cable_test_ports == 0, cable_tests still counts as 1 step.
         """
-        self.overall_total = 4 + max(cable_test_ports, 1)  # aps + switches + gateways + cable tests + config errors
+        # 4 = aps + switches + gateways + config_errors. Cable tests contribute either
+        # `cable_test_ports` ticks (one per port via complete_cable_test_port) or 1 tick
+        # when the step is skipped — hence max(cable_test_ports, 1).
+        self.overall_total = 4 + max(cable_test_ports, 1)
         self.overall_completed = 0
+        self._cable_test_total = max(0, cable_test_ports)
+        self._cable_tests_done = 0
 
-    async def complete_cable_test_port(self, message: str) -> None:
-        """Increment progress for one completed cable test port."""
-        self.steps["cable_tests"]["message"] = message
-        self.overall_completed += 1
+    def set_step_api_costs(self, costs: dict[str, int]) -> None:
+        """Register per-step API call estimates so ETA shrinks as steps complete."""
+        self._step_api_cost = {sid: max(0, int(c)) for sid, c in costs.items()}
+
+    def set_cable_test_estimate(self, port_counts_per_device: dict[str, int]) -> None:
+        """Register expected port counts so the ETA includes the predicted cable-test
+        duration BEFORE that step starts. The busiest switch's port count is the floor.
+        Call this once switch port stats are known.
+        """
+        self._cable_test_max_ports = max(port_counts_per_device.values(), default=0)
+
+    def start_cable_test_phase(self) -> None:
+        """Anchor the cable-test finish time at the moment the step actually starts.
+
+        Call this right after `start_step("cable_tests", ...)`. From here the cable
+        component counts down with wall-clock time — port completions on shorter
+        devices can't push the ETA back up.
+        """
+        if self._cable_test_max_ports > 0:
+            self._cable_test_finish_at = time.monotonic() + self._cable_test_max_ports * self.CABLE_SECONDS_PER_PORT
+
+    def _eta_seconds(self) -> int | None:
+        # Without registered costs the formula has nothing to anchor on — return None so
+        # the UI hides the ETA instead of pinning at "0s".
+        if not self._step_api_cost and self._cable_test_max_ports == 0:
+            return None
+        api_remaining = sum(
+            self._step_api_cost.get(sid, 0)
+            for sid, step in self.steps.items()
+            if step["status"] != "completed"
+        )
+        # Cable contribution: estimate while the step is pending, anchored countdown
+        # while running. The else-fallback covers the brief running-without-anchor window
+        # between `start_step("cable_tests")` (which broadcasts) and `start_cable_test_phase()`
+        # (which sets the anchor without broadcasting) — without it the ETA dips to 0
+        # at the start_step broadcast, then jumps back up on the next port-complete tick.
+        cable_remaining = 0
+        cable_status = self.steps.get("cable_tests", {}).get("status")
+        if cable_status in ("pending", "running"):
+            if self._cable_test_finish_at is not None:
+                cable_remaining = max(0, int(self._cable_test_finish_at - time.monotonic()))
+            else:
+                cable_remaining = self._cable_test_max_ports * self.CABLE_SECONDS_PER_PORT
+        return api_remaining * self.API_SECONDS_PER_CALL + cable_remaining
+
+    async def complete_cable_test_port(self) -> None:
+        """Increment per-port done counter and broadcast. ETA is anchor-driven, not
+        derived from this counter — so device identity is irrelevant here.
+        """
+        self._cable_tests_done += 1
+        self.steps["cable_tests"]["message"] = (
+            f"Tested {self._cable_tests_done}/{self._cable_test_total} ports"
+        )
+        if self.overall_total > 0 and self.overall_completed < self.overall_total:
+            self.overall_completed += 1
         await self._broadcast()
 
     async def _broadcast(self) -> None:
@@ -153,6 +235,7 @@ class _ProgressTracker:
                     "overall_completed": self.overall_completed,
                     "overall_total": self.overall_total,
                     "steps": list(self.steps.values()),
+                    "eta_seconds": self._eta_seconds(),
                 },
             })
 
@@ -190,16 +273,71 @@ async def run_post_deployment_validation(
 
         # ── Discovery phase (indeterminate progress bar) ─────────────
 
-        # Step 1: Site info & settings
+        # Step 1: Site info & settings (+ inventory + switch ports pre-flight for ETA seeding).
+        # Switch ports are fetched here (rather than later alongside device stats) so the
+        # cable-test ETA can be seeded from t≈0; the data is reused unchanged by the LLDP
+        # attachment in the switches step regardless of include_cable_tests, so this is
+        # a net round-trip saving.
         await tracker.start_step("site_info", "Fetching site configuration...")
-        site_setting_resp, org_setting_resp = await asyncio.gather(
+        site_setting_resp, org_setting_resp, inv_resp, switch_ports_data = await asyncio.gather(
             mistapi.arun(setting.getSiteSetting, session, site_id),
             mistapi.arun(org_setting.getOrgSettings, session, mist.org_id),
+            mistapi.arun(org_inventory.countOrgInventory, session, mist.org_id, distinct="type", site_id=site_id),
+            _fetch_switch_ports(session, site_id),
         )
+        up_ports_by_mac, sw_optics_by_mac = switch_ports_data
         site_settings = site_setting_resp.data if site_setting_resp.status_code == 200 else {}
         site_vars = site_settings.get("vars") or {}
         site_auto_upgrade = site_settings.get("auto_upgrade") or {}
         org_settings = org_setting_resp.data if org_setting_resp.status_code == 200 else {}
+
+        # Seed the ETA model from inventory counts. Per-step API costs mirror the
+        # check_site_api_budget breakdown: 10 base scaffolding calls split across
+        # discovery steps + n_ap + n_sw·2 + n_gw·3 device fetches + optional config errors.
+        # Cable-test API kicks are intentionally excluded — that step's wall-clock is
+        # dominated by the 25 s/port TDR runtime, not by 3 s/call API latency.
+        # On inventory failure we leave costs unregistered: the UI will hide the ETA
+        # rather than show a wrong-by-an-order-of-magnitude one.
+        # Using countOrgInventory(distinct="type") so the response is aggregated and
+        # never undercounts on sites with >1000 devices.
+        if inv_resp.status_code == 200 and isinstance(inv_resp.data, dict):
+            counts = {"ap": 0, "switch": 0, "gateway": 0}
+            for item in inv_resp.data.get("results", []):
+                if isinstance(item, dict):
+                    t = item.get("type", "")
+                    if t in counts:
+                        counts[t] = item.get("count", 0)
+            n_ap, n_sw, n_gw = counts["ap"], counts["switch"], counts["gateway"]
+            tracker.set_step_api_costs({
+                "site_info": 3,        # 2 settings + inventory (already in flight, but counted)
+                "templates": 5,        # template/WLAN/derived fetches
+                "variables": 0,
+                "config_events": 1,
+                "device_events": 0,
+                "aps": 4 + n_ap,       # parallel stats batch + per-AP firmware lookups
+                "switches": n_sw * 2,  # ports + optics per switch
+                "gateways": n_gw * 3,  # stats + optics + port_config per gateway
+                "cable_tests": 0,      # excluded (25 s/port wall-clock dominates)
+                "config_errors": (n_sw + n_gw) if include_config_errors else 0,
+            })
+            # Seed cable estimate from up_ports_by_mac so the FIRST visible ETA already
+            # includes the cable-test wall-clock. Keys here are mac (vs device_id later);
+            # only max(values) matters for the formula. The later `set_cable_test_estimate`
+            # call refines this with stricter "connected" filtering — refinement can only
+            # decrease max_ports, never increase it, so no upward jump.
+            if include_cable_tests and up_ports_by_mac:
+                early_port_counts = {mac: len(ports) for mac, ports in up_ports_by_mac.items() if ports}
+                tracker.set_cable_test_estimate(early_port_counts)
+            # Broadcast now so the first visible ETA reflects the FULL api estimate
+            # (every step still pending or running) plus the cable contribution.
+            # Without this, the next broadcast is complete_step("site_info"), where
+            # api_remaining is already short by 3.
+            await tracker.update_step("site_info", "Site context loaded")
+        else:
+            logger.warning(
+                "inventory_preflight_failed job_id=%s status=%s — ETA disabled",
+                job_id, inv_resp.status_code,
+            )
 
         site_data = await mist.get_site(site_id)
         site_name = site_data.get("name", site_id)
@@ -274,9 +412,9 @@ async def run_post_deployment_validation(
 
         # ── Execution phase (determinate progress bar) ───────────────
 
-        # Parallel fetch: all device stats + switch ports
-        (up_ports_by_mac, sw_optics_by_mac), sw_stats_resp, ap_stats_resp, gw_stats_resp = await asyncio.gather(
-            _fetch_switch_ports(session, site_id),
+        # Parallel fetch: device stats only — switch port data was fetched in step 1
+        # (see top of run; up_ports_by_mac/sw_optics_by_mac are reused).
+        sw_stats_resp, ap_stats_resp, gw_stats_resp = await asyncio.gather(
             mistapi.arun(stats.listSiteDevicesStats, session, site_id, type="switch", limit=1000),
             mistapi.arun(stats.listSiteDevicesStats, session, site_id, type="ap", limit=1000),
             mistapi.arun(stats.listSiteDevicesStats, session, site_id, type="gateway", limit=1000),
@@ -307,15 +445,25 @@ async def run_post_deployment_validation(
         _apply_junos_auto_upgrade(fw_versions, "switch", org_settings.get("switch", {}).get("auto_upgrade", {}))
         _apply_junos_auto_upgrade(fw_versions, "gateway", org_settings.get("juniper_srx", {}).get("auto_upgrade", {}))
 
-        # When cable tests are not requested, treat port count as 0 for progress calculation
+        # Per-device port counts feed the cable-test ETA anchor (busiest switch sets the
+        # wall-clock floor). The anchor itself is set later, when the cable-test step
+        # actually starts — only then is `now` meaningful for a finish-time estimate.
+        cable_ports_by_device: dict[str, int] = {}
         if include_cable_tests:
-            total_cable_ports = sum(
-                len(up_ports_by_mac.get(sw.get("mac", ""), [])) for sw in switch_stats if sw.get("status") == "connected"
-            )
+            for sw in switch_stats:
+                if sw.get("status") != "connected":
+                    continue
+                mac = sw.get("mac", "")
+                device_id = sw.get("id", "")  # matches sw_result["device_id"] in _validate_single_switch
+                port_count = len(up_ports_by_mac.get(mac, []))
+                if device_id and port_count > 0:
+                    cable_ports_by_device[device_id] = port_count
+            total_cable_ports = sum(cable_ports_by_device.values())
         else:
             total_cable_ports = 0
 
         tracker.set_execution_total(total_cable_ports)
+        tracker.set_cable_test_estimate(cable_ports_by_device)
 
         # Step 5: AP validation
         await tracker.start_step("aps", "Validating access points...")
@@ -359,6 +507,7 @@ async def run_post_deployment_validation(
         if include_cable_tests and total_cable_ports > 0:
             tracker.update_label("cable_tests", f"Cable Tests ({total_cable_ports} ports)")
             await tracker.start_step("cable_tests", f"Testing {total_cable_ports} ports...")
+            tracker.start_cable_test_phase()
             await _run_all_cable_tests(session, site_id, result["switches"], up_ports_by_mac, tracker)
             # increment=False: ports already counted individually via complete_cable_test_port
             await tracker.complete_step("cable_tests", f"{total_cable_ports} ports tested", increment=False)
@@ -1308,17 +1457,16 @@ async def _run_all_cable_tests(
         up_ports = up_ports_by_mac.get(mac, [])
         if not up_ports:
             return
-        name = sw_result["name"]
         device_id = sw_result["device_id"]
         cable_tests: list[dict] = []
         # Sequential within each switch (cable test needs previous to finish)
-        for idx, port_info in enumerate(up_ports):
+        for port_info in up_ports:
             port_id = port_info["port_id"]
             test_result = await _run_cable_test(session, site_id, device_id, port_id)
             test_result["neighbor_system_name"] = port_info.get("neighbor_system_name", "")
             test_result["neighbor_port_desc"] = port_info.get("neighbor_port_desc", "")
             cable_tests.append(test_result)
-            await tracker.complete_cable_test_port(f"{name}: tested {port_id} ({idx + 1}/{len(up_ports)})")
+            await tracker.complete_cable_test_port()
         sw_result["cable_tests"] = cable_tests
 
     await asyncio.gather(*[_test_one_switch(sw) for sw in switch_results])
@@ -2270,10 +2418,12 @@ async def check_org_api_budget(
             mistapi.arun(org_inventory.countOrgInventory, session, org_id, distinct="type"),
             mistapi.arun(org_sites.countOrgSites, session, org_id, distinct="id"),
         )
-    except Exception as e:
-        logger.warning("budget_check_failed error=%s", str(e))
+    except Exception:
+        # Don't surface raw exception text — could leak internal details and gives an
+        # unstable client-facing message. Full traceback stays in server logs.
+        logger.warning("budget_check_failed", exc_info=True)
         return {
-            "allowed": False, "reason": f"Failed to check API budget: {e}",
+            "allowed": False, "reason": "Unable to check API budget. Please try again.",
             "available": 0, "estimated": 0,
             "config_errors_allowed": False, "config_errors_reason": "Budget check failed",
             "site_count": 0, "device_counts": {},
@@ -2354,6 +2504,108 @@ async def check_org_api_budget(
         "config_errors_reason": config_errors_reason,
         "config_error_calls": config_error_calls,
         "site_count": site_count,
+        "device_counts": device_counts,
+    }
+
+
+async def check_site_api_budget(
+    session: APISession,
+    org_id: str,
+    site_id: str,
+    include_config_errors: bool = False,
+    include_cable_tests: bool = False,
+) -> dict:
+    """Pre-flight check: estimate API call budget for a single-site report."""
+    from math import ceil
+    try:
+        usage_resp, inv_resp = await asyncio.gather(
+            mistapi.arun(self_usage.getSelfApiUsage, session),
+            mistapi.arun(org_inventory.countOrgInventory, session, org_id, distinct="type", site_id=site_id),
+        )
+    except Exception:
+        # Don't surface raw exception text to the client. Full traceback in server logs.
+        logger.warning("site_budget_check_failed", exc_info=True)
+        return {
+            "allowed": False, "reason": "Unable to check API budget. Please try again.",
+            "available": 0, "estimated": 0,
+            "config_errors_allowed": False, "config_errors_reason": "Budget check failed",
+            "site_count": 1, "device_counts": {"ap": 0, "switch": 0, "gateway": 0},
+        }
+
+    requests_used = 0
+    request_limit = 5000
+    if usage_resp.status_code == 200 and isinstance(usage_resp.data, dict):
+        requests_used = usage_resp.data.get("requests", 0)
+        request_limit = usage_resp.data.get("request_limit", 5000)
+    available = request_limit - requests_used
+
+    # countOrgInventory(distinct="type", site_id=...) returns aggregated counts, so it
+    # doesn't undercount on sites with >1000 devices the way a paginated getOrgInventory
+    # would.
+    device_counts = {"ap": 0, "switch": 0, "gateway": 0}
+    if inv_resp.status_code == 200 and isinstance(inv_resp.data, dict):
+        for item in inv_resp.data.get("results", []):
+            if isinstance(item, dict):
+                dtype = item.get("type", "")
+                if dtype in device_counts:
+                    device_counts[dtype] = item.get("count", 0)
+
+    n_ap = device_counts["ap"]
+    n_sw = device_counts["switch"]
+    n_gw = device_counts["gateway"]
+    total = n_ap + n_sw + n_gw
+
+    # Site-report cost model:
+    #   base: site/settings + 4 templates + inventory + events + self (~10)
+    #   per AP: stats (~1)
+    #   per switch: stats + optics (~2)
+    #   per gateway: stats + optics + ports (~3)
+    #   cable tests: ~4 calls per switch (TDR runs)
+    #   config errors: 1 call per (switch + gateway)
+    base_calls = 10
+    pagination = ceil(total / 1000) * 2 if total > 0 else 0
+    per_device_calls = n_ap + n_sw * 2 + n_gw * 3
+    cable_test_calls = n_sw * 4 if include_cable_tests else 0
+    config_error_calls = (n_sw + n_gw) if include_config_errors else 0
+
+    estimated_base = base_calls + pagination + per_device_calls + cable_test_calls
+    estimated_total = estimated_base + config_error_calls
+    required = int(estimated_total * 1.15)
+
+    allowed = required <= available
+
+    config_errors_allowed = True
+    config_errors_reason = ""
+    if include_config_errors:
+        required_with_ce = int((estimated_base + config_error_calls) * 1.15)
+        required_without_ce = int(estimated_base * 1.15)
+        if required_with_ce > available and required_without_ce <= available:
+            config_errors_allowed = False
+            config_errors_reason = (
+                f"Config errors need ~{config_error_calls} extra calls. "
+                f"Only {available} available (need {required_with_ce})."
+            )
+        elif required_with_ce > available:
+            config_errors_allowed = False
+            config_errors_reason = "Insufficient API budget for any site report."
+    else:
+        config_errors_reason = "Not requested"
+
+    reason = "" if allowed else (
+        f"Estimated {required} calls but only {available} available "
+        f"({requests_used}/{request_limit} used). "
+        f"Site has {total} devices ({n_ap} APs, {n_sw} switches, {n_gw} gateways)."
+    )
+
+    return {
+        "allowed": allowed,
+        "reason": reason,
+        "available": available,
+        "estimated": required,
+        "config_errors_allowed": config_errors_allowed,
+        "config_errors_reason": config_errors_reason,
+        "config_error_calls": config_error_calls,
+        "site_count": 1,
         "device_counts": device_counts,
     }
 

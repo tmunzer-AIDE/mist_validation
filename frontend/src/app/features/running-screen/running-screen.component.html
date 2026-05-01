@@ -1,0 +1,197 @@
+<app-page-shell
+  [title]="shellTitle()"
+  [subtitle]="shellSubtitle()"
+  activeRoute="site_selector"
+  [breadcrumb]="[
+    { label: 'Run validation', route: 'site_selector' },
+    { label: scopeLabel() }
+  ]"
+  (navigate)="navigate.emit($event)"
+>
+  <!-- Top progress card -->
+  <div class="mv-card progress-card">
+    <div class="progress-grid">
+      <!-- LEFT: ring + percent + count -->
+      <div class="progress-left">
+        <div class="eyebrow">
+          @if (isComplete()) {
+            Complete
+          } @else {
+            In progress
+          }
+        </div>
+        <div class="ring-row">
+          <svg
+            class="ring"
+            [attr.width]="ringSize"
+            [attr.height]="ringSize"
+            [attr.viewBox]="'0 0 ' + ringSize + ' ' + ringSize"
+          >
+            <circle
+              [attr.cx]="ringSize / 2"
+              [attr.cy]="ringSize / 2"
+              [attr.r]="ringRadius"
+              fill="none"
+              stroke="var(--border)"
+              stroke-width="4"
+            />
+            <circle
+              class="ring-fill"
+              [attr.cx]="ringSize / 2"
+              [attr.cy]="ringSize / 2"
+              [attr.r]="ringRadius"
+              fill="none"
+              [attr.stroke]="isComplete() ? 'var(--success)' : 'var(--accent)'"
+              stroke-width="4"
+              stroke-linecap="round"
+              [attr.stroke-dasharray]="ringDash() + ' ' + ringCircumference"
+            />
+          </svg>
+          <div class="ring-text">
+            <div class="big-pct">
+              {{ progressPercent() }}<span class="pct-sign">%</span>
+            </div>
+            <div class="count">{{ doneStepCount() }} of {{ totalSteps() }} steps</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: current step + meta -->
+      <div class="progress-right">
+        <div class="eyebrow">
+          @if (isComplete()) {
+            All checks completed
+          } @else {
+            Currently running
+          }
+        </div>
+        <div class="current-step">
+          @if (isComplete()) {
+            <mat-icon class="cs-icon done">check_circle</mat-icon>
+          } @else {
+            <span class="cs-spinner"></span>
+          }
+          <div class="cs-text">
+            <div class="cs-title">
+              @if (isComplete()) {
+                {{ totalSteps() }} steps completed
+              } @else if (currentStep(); as cs) {
+                {{ cs.label }}
+              } @else {
+                Initializing…
+              }
+            </div>
+            <div class="cs-sub">
+              @if (currentStep(); as cs) {
+                {{ cs.message || 'Working…' }}
+              } @else if (isComplete()) {
+                Opening report…
+              }
+            </div>
+          </div>
+        </div>
+
+        <div class="meta-row">
+          <div class="meta">
+            <div class="meta-label">Elapsed</div>
+            <div class="meta-value">{{ fmtTime(elapsedSeconds()) }}</div>
+          </div>
+          <div class="meta">
+            <div class="meta-label">ETA</div>
+            <div class="meta-value">
+              @if (etaSeconds() !== null) {
+                {{ fmtTime(etaSeconds()!) }}
+              } @else {
+                —
+              }
+            </div>
+          </div>
+          <div class="meta">
+            <div class="meta-label">Run ID</div>
+            <div class="meta-value mono">{{ report().id.slice(0, 8) }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom strip -->
+    <div class="progress-strip">
+      <div
+        class="progress-fill"
+        [class.complete]="isComplete()"
+        [style.width.%]="progressPercent()"
+      ></div>
+    </div>
+  </div>
+
+  <!-- Steps checklist -->
+  <div class="mv-card steps-card">
+    <div class="steps-head">
+      <div class="steps-title">Steps</div>
+    </div>
+
+    @for (group of groupedSteps(); track group.phase) {
+      <div class="phase">
+        <div
+          class="phase-head"
+          [class.is-done]="group.done"
+          [class.is-running]="!group.done && group.running"
+        >
+          <span class="phase-name">{{ group.phase }}</span>
+          <span class="phase-count">{{ group.doneCount }}/{{ group.total }}</span>
+        </div>
+        @for (s of group.items; track s.id) {
+          <div
+            class="step"
+            [class.is-running]="s.status === 'running'"
+            [class.is-queued]="s.status === 'pending'"
+            [class.is-failed]="s.status === 'failed'"
+          >
+            <div class="step-marker">
+              @switch (s.status) {
+                @case ('completed') {
+                  <span class="marker done">
+                    <mat-icon>check</mat-icon>
+                  </span>
+                }
+                @case ('running') {
+                  <span class="marker running"><span class="cs-spinner small"></span></span>
+                }
+                @case ('failed') {
+                  <span class="marker failed">
+                    <mat-icon>close</mat-icon>
+                  </span>
+                }
+                @default {
+                  <span class="marker queued"></span>
+                }
+              }
+            </div>
+            <div class="step-text">
+              <div class="step-title">{{ s.label }}</div>
+              @if (s.message) {
+                <div class="step-msg">{{ s.message }}</div>
+              }
+            </div>
+            <div class="step-state">
+              @switch (s.status) {
+                @case ('completed') {
+                  done
+                }
+                @case ('running') {
+                  running
+                }
+                @case ('failed') {
+                  failed
+                }
+                @default {
+                  queued
+                }
+              }
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </div>
+</app-page-shell>

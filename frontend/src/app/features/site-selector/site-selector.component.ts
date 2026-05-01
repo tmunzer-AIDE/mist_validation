@@ -10,27 +10,18 @@ import {
   signal,
 } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
-import { DatePipe } from '@angular/common';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { MatAutocompleteModule } from '@angular/material/autocomplete';
-import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
-import { MatCardModule } from '@angular/material/card';
-import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatCheckboxModule } from '@angular/material/checkbox';
-
-import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
-import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { MatTableModule } from '@angular/material/table';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { debounceTime, distinctUntilChanged } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { AuthInfo } from '../../app.component';
 import { StatusBadgeComponent } from '../../shared/components/status-badge/status-badge.component';
-import { ConfirmDeleteDialogComponent } from './confirm-delete-dialog.component';
+import { PageShellComponent } from '../../shared/components/page-shell/page-shell.component';
 
 interface Site {
   id: string;
@@ -39,7 +30,9 @@ interface Site {
 
 interface ReportRow {
   id: string;
+  org_id: string;
   org_name: string;
+  site_id: string;
   site_name: string;
   scope: string;
   status: string;
@@ -80,20 +73,14 @@ interface StartReportResponse {
   standalone: true,
   imports: [
     ReactiveFormsModule,
-    DatePipe,
-    MatCardModule,
-    MatFormFieldModule,
-    MatInputModule,
     MatAutocompleteModule,
     MatButtonModule,
-    MatButtonToggleModule,
     MatCheckboxModule,
-    MatDialogModule,
-    MatTableModule,
     MatIconModule,
     MatProgressSpinnerModule,
     MatTooltipModule,
     StatusBadgeComponent,
+    PageShellComponent,
   ],
   templateUrl: './site-selector.component.html',
   styleUrl: './site-selector.component.scss',
@@ -104,14 +91,15 @@ export class SiteSelectorComponent implements OnInit {
 
   @Output() orgSelected = new EventEmitter<{ id: string; name: string; role?: string }>();
   @Output() reportStarted = new EventEmitter<{ id: string; scope: string }>();
-  @Output() showReference = new EventEmitter<void>();
+  @Output() navigate = new EventEmitter<
+    'site_selector' | 'reports' | 'validation_reference'
+  >();
 
   private api = inject(ApiService);
   private fb = inject(FormBuilder);
-  private dialog = inject(MatDialog);
 
   orgSearchCtrl = this.fb.control('');
-  siteSearchCtrl = this.fb.control({ value: '', disabled: true });
+  siteSearchCtrl = this.fb.nonNullable.control('');
   cableTestsCtrl = this.fb.control(false);
   configErrorsCtrl = this.fb.control(false);
 
@@ -121,20 +109,22 @@ export class SiteSelectorComponent implements OnInit {
   selectedSite = signal<Site | null>(null);
 
   recentReports = signal<ReportRow[]>([]);
-  reportsLoading = signal(false);
 
   tdrSiteIds = signal<string[]>([]);
   tdrGroupName = signal('');
   tdrGroupExists = signal(true);
 
   scope = signal<'site' | 'org'>('site');
-  orgBudget = signal<BudgetInfo | null>(null);
+  budget = signal<BudgetInfo | null>(null);
   budgetLoading = signal(false);
+  // Monotonic request id — fetchBudget can fire from multiple inputs (org, site,
+  // toggle changes). If an older response arrives after a newer one was issued, it
+  // would clobber the current selection. We capture the id at request time and
+  // ignore responses whose id no longer matches the latest.
+  private budgetReqId = 0;
 
   generating = signal(false);
   startError = signal('');
-
-  reportColumns = ['org_name', 'site_name', 'scope', 'status', 'created_at', 'action'];
 
   private orgQuery = toSignal(
     this.orgSearchCtrl.valueChanges.pipe(debounceTime(0), distinctUntilChanged()),
@@ -144,7 +134,10 @@ export class SiteSelectorComponent implements OnInit {
   filteredOrgs = computed(() => {
     const raw = this.orgQuery() ?? '';
     const q = (typeof raw === 'string' ? raw : '').toLowerCase();
-    return this.authInfo().orgs.filter((o) => o.name.toLowerCase().includes(q));
+    return this.authInfo()
+      .orgs.filter((o) => o.name.toLowerCase().includes(q))
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
   });
 
   private siteQuery = toSignal(
@@ -153,17 +146,33 @@ export class SiteSelectorComponent implements OnInit {
   );
 
   filteredSites = computed(() => {
-    const raw = this.siteQuery() ?? '';
-    const q = (typeof raw === 'string' ? raw : '').toLowerCase();
-    return this.allSites().filter((s) => s.name.toLowerCase().includes(q));
+    const q = (this.siteQuery() ?? '').toLowerCase().trim();
+    const sites = this.allSites();
+    if (!q) return sites;
+    return sites.filter((s) => s.name.toLowerCase().includes(q));
+  });
+
+  // Map of site_id → most recent report status (for the Report column)
+  reportStatusBySite = computed<Map<string, string>>(() => {
+    const map = new Map<string, string>();
+    for (const r of this.recentReports()) {
+      if (r.site_id && !map.has(r.site_id)) {
+        map.set(r.site_id, r.status);
+      }
+    }
+    return map;
   });
 
   canGenerate = computed(() => {
     const hasOrg = !!(this.currentOrg() || this.authInfo().orgs.length === 1);
+    if (!hasOrg) return false;
+    if (this.budgetLoading()) return false;
     if (this.scope() === 'org') {
-      return hasOrg && !this.budgetLoading() && (this.orgBudget()?.allowed ?? false);
+      return this.budget()?.allowed ?? false;
     }
-    return !!this.selectedSite() && hasOrg;
+    if (!this.selectedSite()) return false;
+    const b = this.budget();
+    return !b || b.allowed;
   });
 
   canWriteOrg = computed(() => {
@@ -191,50 +200,58 @@ export class SiteSelectorComponent implements OnInit {
     }
     if (!this.tdrGroupExists()) {
       const name = this.tdrGroupName();
-      return `Cable tests are not available. The site group '${name}' does not exist in this organization.`;
+      return `Cable tests are not available. The site group "${name}" does not exist in this organization.`;
     }
     if (!this.siteInTdrGroup()) {
       const name = this.tdrGroupName();
-      return `Cable tests are not enabled for this site. Add it to the '${name}' site group in Mist to enable.`;
+      return `Cable tests are not enabled for this site. Add it to the "${name}" site group in Mist to enable.`;
     }
     return '';
+  });
+
+  budgetPct = computed(() => {
+    const b = this.budget();
+    if (!b) return 0;
+    // Already over the API limit (used > limit makes available negative): show full bar.
+    if (b.available <= 0) return 100;
+    return Math.min(100, Math.max(0, Math.round((b.estimated / b.available) * 100)));
+  });
+
+  totalDevices = computed(() => {
+    const b = this.budget();
+    if (!b) return 0;
+    const d = b.device_counts;
+    return (d.ap ?? 0) + (d.switch ?? 0) + (d.gateway ?? 0);
   });
 
   constructor() {
     effect(() => {
       if (!this.cableTestsAllowed()) {
-        this.cableTestsCtrl.setValue(false);
-        this.cableTestsCtrl.disable();
+        // emitEvent: false avoids triggering valueChanges → fetchBudget(); the
+        // caller that flipped cableTestsAllowed (site change, role change) already
+        // calls fetchBudget() explicitly, so a second request here is redundant.
+        this.cableTestsCtrl.setValue(false, { emitEvent: false });
+        this.cableTestsCtrl.disable({ emitEvent: false });
       } else {
-        this.cableTestsCtrl.enable();
+        this.cableTestsCtrl.enable({ emitEvent: false });
       }
     });
 
-    this.configErrorsCtrl.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => {
-      if (this.scope() === 'org') {
-        this.fetchBudget();
-      }
-    });
-
-    this.siteSearchCtrl.valueChanges
-      .pipe(debounceTime(0), distinctUntilChanged(), takeUntilDestroyed())
-      .subscribe((val) => {
-        // val can be a string (typed text) or a Site object (autocomplete selection)
-        if (typeof val === 'object' && val !== null) return;
-        const current = this.selectedSite();
-        if (current && current.name !== val) {
-          this.selectedSite.set(null);
-        }
-      });
+    this.configErrorsCtrl.valueChanges
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => this.fetchBudget());
+    this.cableTestsCtrl.valueChanges
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => this.fetchBudget());
   }
 
   ngOnInit(): void {
-    const initialOrg = this.selectedOrg() ?? (this.authInfo().orgs.length === 1 ? this.authInfo().orgs[0] : null);
+    const initialOrg =
+      this.selectedOrg() ?? (this.authInfo().orgs.length === 1 ? this.authInfo().orgs[0] : null);
     if (initialOrg) {
       this.currentOrg.set(initialOrg);
-      // Restore the org name in the autocomplete field so it's visually consistent
       if (this.authInfo().orgs.length > 1) {
-        this.orgSearchCtrl.setValue(initialOrg as any);
+        this.orgSearchCtrl.setValue(initialOrg as never);
       }
       this.loadSites(initialOrg);
     }
@@ -250,7 +267,8 @@ export class SiteSelectorComponent implements OnInit {
     this.tdrGroupExists.set(true);
 
     const auth = this.authInfo();
-    const resolvedOrg = org ?? this.selectedOrg() ?? (auth.orgs.length === 1 ? auth.orgs[0] : null);
+    const resolvedOrg =
+      org ?? this.selectedOrg() ?? (auth.orgs.length === 1 ? auth.orgs[0] : null);
     const orgId = resolvedOrg?.id ?? '';
     this.api.get<SitesResponse>(`sites?org_id=${orgId}`).subscribe({
       next: (res) => {
@@ -259,89 +277,91 @@ export class SiteSelectorComponent implements OnInit {
         this.tdrGroupName.set(res.tdr_group_name);
         this.tdrGroupExists.set(res.tdr_group_exists);
         this.sitesLoading.set(false);
-        this.siteSearchCtrl.enable();
       },
-      error: () => {
-        this.sitesLoading.set(false);
-      },
+      error: () => this.sitesLoading.set(false),
     });
   }
 
   loadRecentReports(): void {
-    this.reportsLoading.set(true);
-    this.api
-      .get<ReportsResponse>('reports')
-      .subscribe({
-        next: (res) => {
-          this.recentReports.set(res.reports);
-          this.reportsLoading.set(false);
-        },
-        error: () => {
-          this.reportsLoading.set(false);
-        },
-      });
+    this.api.get<ReportsResponse>('reports').subscribe({
+      next: (res) => this.recentReports.set(res.reports),
+      error: () => this.recentReports.set([]),
+    });
   }
 
   onOrgSelected(org: { id: string; name: string }): void {
     this.currentOrg.set(org);
+    // Sync the form control so the topbar autocomplete (which reuses orgSearchCtrl)
+    // shows the org name via displayOrg, instead of the search string the user typed
+    // when picking from the landing list.
+    this.orgSearchCtrl.setValue(org as never);
     this.orgSelected.emit(org);
     this.loadSites(org);
-    if (this.scope() === 'org') {
-      this.fetchBudget();
-    }
+    this.fetchBudget();
   }
 
   displayOrg(org: { id: string; name: string; role?: string } | null): string {
     return org?.name ?? '';
   }
 
-  displaySite(site: Site | null): string {
-    return site?.name ?? '';
+  selectSite(site: Site): void {
+    this.selectedSite.set(site);
+    this.fetchBudget();
   }
 
   onScopeChange(newScope: 'site' | 'org'): void {
     this.scope.set(newScope);
     if (newScope === 'org') {
-      this.cableTestsCtrl.setValue(false);
-      this.cableTestsCtrl.disable();
-      // Only fetch budget if an org is already selected
-      const org = this.currentOrg() ?? (this.authInfo().orgs.length === 1 ? this.authInfo().orgs[0] : null);
-      if (org) {
-        this.fetchBudget();
-      }
+      this.cableTestsCtrl.setValue(false, { emitEvent: false });
+      this.cableTestsCtrl.disable({ emitEvent: false });
     } else {
-      this.orgBudget.set(null);
-      // Re-enable cable tests based on site selection
-      if (this.cableTestsAllowed()) {
-        this.cableTestsCtrl.enable();
-      }
+      if (this.cableTestsAllowed()) this.cableTestsCtrl.enable({ emitEvent: false });
     }
+    this.fetchBudget();
   }
 
   fetchBudget(): void {
+    // Bump unconditionally so any in-flight request is marked stale, even if we
+    // early-return below (e.g. user clears site selection while a request is pending).
+    const reqId = ++this.budgetReqId;
     const auth = this.authInfo();
     const org = this.currentOrg() ?? (auth.orgs.length === 1 ? auth.orgs[0] : null);
     if (!org) return;
 
+    const params = new URLSearchParams();
+    params.set('org_id', org.id);
+    params.set('include_config_errors', String(!!this.configErrorsCtrl.value));
+
+    if (this.scope() === 'site') {
+      const site = this.selectedSite();
+      if (!site) {
+        this.budget.set(null);
+        this.budgetLoading.set(false);
+        return;
+      }
+      params.set('site_id', site.id);
+      params.set('include_cable_tests', String(!!this.cableTestsCtrl.value));
+    }
+
     this.budgetLoading.set(true);
-    this.api
-      .get<BudgetInfo>(`reports/budget?org_id=${org.id}&include_config_errors=${this.configErrorsCtrl.value}`)
-      .subscribe({
-        next: (budget) => {
-          this.orgBudget.set(budget);
-          this.budgetLoading.set(false);
-          if (!budget.config_errors_allowed) {
-            this.configErrorsCtrl.setValue(false, { emitEvent: false });
-            this.configErrorsCtrl.disable({ emitEvent: false });
-          } else {
-            this.configErrorsCtrl.enable({ emitEvent: false });
-          }
-        },
-        error: () => {
-          this.budgetLoading.set(false);
-          this.orgBudget.set(null);
-        },
-      });
+    this.api.get<BudgetInfo>(`reports/budget?${params.toString()}`).subscribe({
+      next: (budget) => {
+        if (reqId !== this.budgetReqId) return; // stale — a newer request superseded this one
+        this.budget.set(budget);
+        this.budgetLoading.set(false);
+        if (!budget.config_errors_allowed) {
+          this.configErrorsCtrl.setValue(false, { emitEvent: false });
+          this.configErrorsCtrl.disable({ emitEvent: false });
+        } else {
+          this.configErrorsCtrl.enable({ emitEvent: false });
+        }
+      },
+      error: () => {
+        if (reqId !== this.budgetReqId) return;
+        this.budgetLoading.set(false);
+        this.budget.set(null);
+      },
+    });
   }
 
   generateReport(): void {
@@ -365,38 +385,22 @@ export class SiteSelectorComponent implements OnInit {
       body['include_cable_tests'] = this.cableTestsCtrl.value;
     }
 
-    this.api
-      .post<StartReportResponse>('reports', body)
-      .subscribe({
-        next: (res) => {
-          this.generating.set(false);
-          this.reportStarted.emit({ id: res.id, scope: this.scope() });
-        },
-        error: (err) => {
-          this.generating.set(false);
-          const msg = err?.error?.detail ?? err?.error?.message ?? 'Failed to start report.';
-          this.startError.set(msg as string);
-        },
-      });
-  }
-
-  deleteReport(row: ReportRow): void {
-    const label = [row.org_name, row.site_name].filter(Boolean).join(' / ') || row.id;
-    const ref = this.dialog.open(ConfirmDeleteDialogComponent, {
-      data: { label },
-      width: '360px',
-    });
-    ref.afterClosed().subscribe((confirmed) => {
-      if (!confirmed) return;
-      this.api.delete(`reports/${row.id}`).subscribe({
-        next: () => {
-          this.recentReports.update((list) => list.filter((r) => r.id !== row.id));
-        },
-      });
+    this.api.post<StartReportResponse>('reports', body).subscribe({
+      next: (res) => {
+        this.generating.set(false);
+        this.reportStarted.emit({ id: res.id, scope: this.scope() });
+      },
+      error: (err) => {
+        this.generating.set(false);
+        const msg = err?.error?.detail ?? err?.error?.message ?? 'Failed to start report.';
+        this.startError.set(msg as string);
+      },
     });
   }
 
-  viewReport(row: ReportRow): void {
-    this.reportStarted.emit({ id: row.id, scope: row.scope || 'site' });
+  onShellNavigate(route: 'site_selector' | 'reports' | 'validation_reference'): void {
+    if (route !== 'site_selector') {
+      this.navigate.emit(route);
+    }
   }
 }

@@ -1,0 +1,15 @@
+<button
+  type="button"
+  class="mv-toggle"
+  role="switch"
+  [class.is-checked]="checked"
+  [class.is-disabled]="disabled"
+  [attr.aria-checked]="checked"
+  [disabled]="disabled"
+  (click)="toggle()"
+>
+  <span class="mv-toggle-track" aria-hidden="true">
+    <span class="mv-toggle-thumb"></span>
+  </span>
+  <span class="mv-toggle-label"><ng-content></ng-content></span>
+</button>
