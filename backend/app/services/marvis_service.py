@@ -10,6 +10,7 @@ in docs/superpowers/specs/2026-05-01-marvis-minis-design.md §5.
 from __future__ import annotations
 
 import logging
+import mistapi
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -270,10 +271,9 @@ async def _trigger_test(session: Any, site_id: str) -> tuple[str | None, str | N
     `mist_post`/`mist_get` are synchronous in the mistapi SDK, so they're
     wrapped with asyncio.to_thread.
     """
-    import asyncio
     uri = f"/api/v1/sites/{site_id}/synthetic_test"
     try:
-        resp = await asyncio.to_thread(session.mist_post, uri, body={})
+        resp = await mistapi.arun(session.mist_post, uri, body={})
         if resp.status_code in (200, 201, 202):
             data = resp.data or {}
             test_id = data.get("id") if isinstance(data, dict) else None
@@ -289,7 +289,6 @@ async def _trigger_test(session: Any, site_id: str) -> tuple[str | None, str | N
 
 async def _fetch_snapshot(session: Any, org_id: str, site_id: str, test_id: str) -> dict | None:
     """GET /api/v1/labs/orgs/{org_id}/synthetic_test → response.data, or None on error."""
-    import asyncio
     uri = f"/api/v1/labs/orgs/{org_id}/synthetic_test"
     query = {
         "q": "test_details",
@@ -298,7 +297,7 @@ async def _fetch_snapshot(session: Any, org_id: str, site_id: str, test_id: str)
         "test_id": test_id,
     }
     try:
-        resp = await asyncio.to_thread(session.mist_get, uri, query=query)
+        resp = await mistapi.arun(session.mist_get, uri, query=query)
         if resp.status_code == 200 and isinstance(resp.data, dict):
             return resp.data
         logger.debug("marvis_poll_status status=%s", resp.status_code)
