@@ -149,6 +149,21 @@ class _ProgressTracker:
             self.overall_completed = min(self.overall_completed + 1, self.overall_total)
         await self._broadcast()
 
+    async def fail_step(self, step_id: str, message: str = "", *, increment: bool = True) -> None:
+        """Mirror of complete_step but sets status='failed'.
+
+        We still tick `overall_completed` because the step is *done*: a failed
+        Marvis (or any opt-in step that errors out) shouldn't leave the overall
+        progress bar pinned below 100% while the surrounding report is marked
+        completed. Pass `increment=False` for paths that already counted ticks
+        another way (none today, but parity with complete_step).
+        """
+        self.steps[step_id]["status"] = "failed"
+        self.steps[step_id]["message"] = message
+        if increment and self.overall_total > 0:
+            self.overall_completed = min(self.overall_completed + 1, self.overall_total)
+        await self._broadcast()
+
     async def update_step(self, step_id: str, message: str) -> None:
         """Update message without changing status or incrementing progress."""
         self.steps[step_id]["message"] = message
@@ -568,16 +583,13 @@ async def run_post_deployment_validation(
             if mm_status == "completed":
                 await tracker.complete_step("marvis_minis", "Tests complete")
             elif mm_status == "trigger_failed":
-                # Mark step failed but report still completes
-                tracker.steps["marvis_minis"]["status"] = "failed"
-                tracker.steps["marvis_minis"]["message"] = (
-                    f"Trigger failed: {result['marvis_minis'].get('trigger_error', 'unknown')}"
-                )
-                await tracker._broadcast()
-            else:  # timeout / other
-                tracker.steps["marvis_minis"]["status"] = "failed"
-                tracker.steps["marvis_minis"]["message"] = f"Marvis Minis {mm_status}"
-                await tracker._broadcast()
+                # Mark step failed but report still completes. fail_step ticks
+                # overall_completed so the progress bar reaches 100% even on a
+                # Marvis-only failure.
+                trigger_err = result["marvis_minis"].get("trigger_error", "unknown")
+                await tracker.fail_step("marvis_minis", f"Trigger failed: {trigger_err}")
+            else:  # timeout / poll_failed / other
+                await tracker.fail_step("marvis_minis", f"Marvis Minis {mm_status}")
         else:
             await tracker.start_step("marvis_minis", "Skipped (opt-in)")
             await tracker.complete_step("marvis_minis", "Skipped (opt-in)")
