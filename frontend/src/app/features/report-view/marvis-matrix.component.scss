@@ -93,7 +93,7 @@ td.vlan-cell {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.4px;
-  background: #fff3bf;
-  color: #5c3d00;
+  background: var(--warn-soft);
+  color: var(--warn-strong);
   vertical-align: middle;
 }

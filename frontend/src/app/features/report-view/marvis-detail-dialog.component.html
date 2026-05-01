@@ -20,7 +20,11 @@
     <div class="mdd-test">
       <div class="mdd-test-head">
         <span class="mdd-test-type">{{ test.test_type }}</span>
-        <app-status-badge [status]="test.status" size="sm" />
+        <app-status-badge
+          [status]="test.status"
+          [label]="test.status === 'info' ? 'Skipped' : ''"
+          size="sm"
+        />
       </div>
       <div class="mdd-test-summary">{{ test.summary }}</div>
 
