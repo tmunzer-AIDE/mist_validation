@@ -9,7 +9,7 @@ import {
   input,
   signal,
 } from '@angular/core';
-import { DatePipe } from '@angular/common';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatIconModule } from '@angular/material/icon';
@@ -32,6 +32,13 @@ import {
   DeviceEvent,
   DeviceResult,
 } from './device-detail-dialog.component';
+import {
+  MarvisMatrixComponent,
+  MarvisCellClick,
+  MarvisLiveSnapshot,
+  MarvisResult,
+} from './marvis-matrix.component';
+import { MarvisDetailDialogComponent } from './marvis-detail-dialog.component';
 import {
   checkLabel,
   deviceTypeIcon,
@@ -72,6 +79,7 @@ interface ReportResult {
   aps: DeviceResult[];
   switches: SwitchResult[];
   gateways: GatewayResult[];
+  marvis_minis?: MarvisResult;
   summary: { pass: number; fail: number; warn: number; info: number };
 }
 
@@ -135,6 +143,7 @@ interface FlatDevice {
   standalone: true,
   imports: [
     DatePipe,
+    DecimalPipe,
     MatButtonModule,
     MatDialogModule,
     MatExpansionModule,
@@ -144,6 +153,7 @@ interface FlatDevice {
     StatusBadgeComponent,
     PageShellComponent,
     RunningScreenComponent,
+    MarvisMatrixComponent,
   ],
   templateUrl: './report-view.component.html',
   styleUrl: './report-view.component.scss',
@@ -164,6 +174,18 @@ export class ReportViewComponent implements OnInit, OnDestroy {
   report = signal<ReportResponse | null>(null);
   private wsSubscription: { unsubscribe(): void } | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
+
+  marvisLive = signal<MarvisLiveSnapshot | null>(null);
+
+  marvisData = computed<MarvisResult | MarvisLiveSnapshot | null>(() => {
+    const persisted = this.report()?.result?.marvis_minis;
+    if (persisted) return persisted;
+    return this.marvisLive();
+  });
+
+  marvisIsLive = computed<boolean>(() => {
+    return !this.report()?.result?.marvis_minis && this.marvisLive() !== null;
+  });
 
   // View mode + filters
   vizMode = signal<'scorecard' | 'table'>('scorecard');
@@ -618,6 +640,13 @@ export class ReportViewComponent implements OnInit, OnDestroy {
           });
         }
       }
+
+      if (type === 'marvis_progress') {
+        const data = msg['data'] as MarvisLiveSnapshot;
+        if (data) {
+          this.marvisLive.set(data);
+        }
+      }
     });
   }
 
@@ -627,6 +656,19 @@ export class ReportViewComponent implements OnInit, OnDestroy {
   ): void {
     this.dialog.open(DeviceDetailDialogComponent, {
       data: { device: device as DeviceResult | SwitchResult | GatewayResult, type },
+      width: '700px',
+      maxWidth: '92vw',
+      height: '100vh',
+      maxHeight: '100vh',
+      position: { right: '0', top: '0' },
+      panelClass: 'mv-side-drawer',
+      autoFocus: false,
+    });
+  }
+
+  openMarvisDetail(click: MarvisCellClick): void {
+    this.dialog.open(MarvisDetailDialogComponent, {
+      data: { ap: click.ap, vlan: click.vlan },
       width: '700px',
       maxWidth: '92vw',
       height: '100vh',

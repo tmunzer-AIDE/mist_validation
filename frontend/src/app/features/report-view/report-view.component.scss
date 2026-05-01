@@ -861,3 +861,16 @@
   color: var(--muted-strong);
   max-width: 480px;
 }
+
+.marvis-section {
+  margin-top: 24px;
+}
+
+.marvis-section-body {
+  padding: 0;
+}
+
+.marvis-error {
+  color: #c92a2a;
+  font-weight: 600;
+}
