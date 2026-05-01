@@ -93,6 +93,7 @@ _STEPS = [
     ("gateways", "Gateways"),
     ("cable_tests", "Cable Tests"),
     ("config_errors", "Config Command Errors"),
+    ("marvis_minis", "Marvis Minis"),
 ]
 
 
@@ -133,6 +134,8 @@ class _ProgressTracker:
         self._cable_test_finish_at: float | None = None  # monotonic seconds; set at step start
         self._cable_test_total = 0
         self._cable_tests_done = 0
+        self._marvis_finish_at: float | None = None  # monotonic seconds; set at marvis step start
+        self.MARVIS_TOTAL_SECONDS = 240  # ~4 min budget
 
     async def start_step(self, step_id: str, message: str = "") -> None:
         self.steps[step_id]["status"] = "running"
@@ -190,21 +193,29 @@ class _ProgressTracker:
         if self._cable_test_max_ports > 0:
             self._cable_test_finish_at = time.monotonic() + self._cable_test_max_ports * self.CABLE_SECONDS_PER_PORT
 
+    def start_marvis_phase(self) -> None:
+        """Anchor the marvis-minis finish time at the moment the step actually starts."""
+        self._marvis_finish_at = time.monotonic() + self.MARVIS_TOTAL_SECONDS
+
     def _eta_seconds(self) -> int | None:
-        # Without registered costs the formula has nothing to anchor on — return None so
-        # the UI hides the ETA instead of pinning at "0s".
-        if not self._step_api_cost and self._cable_test_max_ports == 0:
+        # Without registered costs and no wall-clock anchors, the formula has nothing
+        # to work from — return None so the UI hides the ETA instead of pinning at 0s.
+        marvis_step_status = self.steps.get("marvis_minis", {}).get("status")
+        marvis_active = marvis_step_status in ("pending", "running") and (
+            self._marvis_finish_at is not None
+            or self._step_api_cost.get("marvis_minis", 0) > 0
+        )
+        if (
+            not self._step_api_cost
+            and self._cable_test_max_ports == 0
+            and not marvis_active
+        ):
             return None
         api_remaining = sum(
             self._step_api_cost.get(sid, 0)
             for sid, step in self.steps.items()
             if step["status"] != "completed"
         )
-        # Cable contribution: estimate while the step is pending, anchored countdown
-        # while running. The else-fallback covers the brief running-without-anchor window
-        # between `start_step("cable_tests")` (which broadcasts) and `start_cable_test_phase()`
-        # (which sets the anchor without broadcasting) — without it the ETA dips to 0
-        # at the start_step broadcast, then jumps back up on the next port-complete tick.
         cable_remaining = 0
         cable_status = self.steps.get("cable_tests", {}).get("status")
         if cable_status in ("pending", "running"):
@@ -212,7 +223,15 @@ class _ProgressTracker:
                 cable_remaining = max(0, int(self._cable_test_finish_at - time.monotonic()))
             else:
                 cable_remaining = self._cable_test_max_ports * self.CABLE_SECONDS_PER_PORT
-        return api_remaining * self.API_SECONDS_PER_CALL + cable_remaining
+
+        marvis_remaining = 0
+        if marvis_step_status in ("pending", "running"):
+            if self._marvis_finish_at is not None:
+                marvis_remaining = max(0, int(self._marvis_finish_at - time.monotonic()))
+            else:
+                marvis_remaining = self.MARVIS_TOTAL_SECONDS
+
+        return api_remaining * self.API_SECONDS_PER_CALL + cable_remaining + marvis_remaining
 
     async def complete_cable_test_port(self) -> None:
         """Increment per-port done counter and broadcast. ETA is anchor-driven, not
@@ -247,6 +266,7 @@ async def run_post_deployment_validation(
     org_id: str,
     include_cable_tests: bool = False,
     include_config_errors: bool = False,
+    include_marvis_minis: bool = False,
     progress_callback=None,
     token: str | None = None,
     cookies: dict | None = None,
@@ -319,6 +339,7 @@ async def run_post_deployment_validation(
                 "gateways": n_gw * 3,  # stats + optics + port_config per gateway
                 "cable_tests": 0,      # excluded (25 s/port wall-clock dominates)
                 "config_errors": (n_sw + n_gw) if include_config_errors else 0,
+                "marvis_minis": 1 if include_marvis_minis else 0,
             })
             # Seed cable estimate from up_ports_by_mac so the FIRST visible ETA already
             # includes the cable-test wall-clock. Keys here are mac (vs device_id later);
@@ -527,6 +548,37 @@ async def run_post_deployment_validation(
         else:
             await tracker.start_step("config_errors", "Skipped (opt-in)")
             await tracker.complete_step("config_errors", "Skipped (opt-in)")
+
+        # Step 10: Marvis Minis (opt-in)
+        from app.services import marvis_service
+        if include_marvis_minis:
+            await tracker.start_step("marvis_minis", "Triggering Marvis Minis…")
+            tracker.start_marvis_phase()
+            result["marvis_minis"] = await marvis_service.run_marvis_minis(
+                session=session,
+                org_id=mist.org_id,
+                site_id=site_id,
+                tracker=tracker,
+                progress_callback=progress_callback,
+                job_id=job_id,
+            )
+            mm_status = result["marvis_minis"].get("status")
+            if mm_status == "completed":
+                await tracker.complete_step("marvis_minis", "Tests complete")
+            elif mm_status == "trigger_failed":
+                # Mark step failed but report still completes
+                tracker.steps["marvis_minis"]["status"] = "failed"
+                tracker.steps["marvis_minis"]["message"] = (
+                    f"Trigger failed: {result['marvis_minis'].get('trigger_error', 'unknown')}"
+                )
+                await tracker._broadcast()
+            else:  # timeout / other
+                tracker.steps["marvis_minis"]["status"] = "failed"
+                tracker.steps["marvis_minis"]["message"] = f"Marvis Minis {mm_status}"
+                await tracker._broadcast()
+        else:
+            await tracker.start_step("marvis_minis", "Skipped (opt-in)")
+            await tracker.complete_step("marvis_minis", "Skipped (opt-in)")
 
         # Attach correlated events to each device
         _attach_device_events(result, events_by_mac)
@@ -2373,6 +2425,16 @@ def _compute_summary(result: dict) -> dict:
                 s = ct.get("status", "info")
                 if s in counts:
                     counts[s] += 1
+
+    # Marvis Minis tests (each AP × VLAN × test counts toward score per spec §5.4)
+    marvis = result.get("marvis_minis")
+    if isinstance(marvis, dict):
+        for ap in marvis.get("ap_results", []) or []:
+            for vlan in ap.get("vlans", []) or []:
+                for test in vlan.get("tests", []) or []:
+                    s = test.get("status", "info")
+                    if s in counts:
+                        counts[s] += 1
 
     return counts
 
