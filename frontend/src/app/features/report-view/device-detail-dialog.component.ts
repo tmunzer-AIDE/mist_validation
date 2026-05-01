@@ -327,7 +327,8 @@ export class DeviceDetailDialogComponent {
   }
 
   copyDeviceId(): void {
-    void navigator.clipboard?.writeText(this.data.device.device_id);
+    const copyPromise = navigator.clipboard?.writeText(this.data.device.device_id);
+    void copyPromise?.catch(() => {});
   }
 
   pairClass(status: string): string {
