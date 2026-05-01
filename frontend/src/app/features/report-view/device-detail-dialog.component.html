@@ -240,6 +240,7 @@
   <div class="section-block">
   <div class="section-title">Optic Modules</div>
   <div class="optics-legend">Rx threshold: warn &lt; -20 dBm, fail &lt; -25 dBm &bull; Tx threshold: warn &lt; -8 dBm, fail &lt; -12 dBm</div>
+  <div class="optics-table-scroll">
   <table mat-table [dataSource]="sortedPortOptics">
     <ng-container matColumnDef="port_id">
       <th mat-header-cell *matHeaderCellDef>Port</th>
@@ -276,6 +277,7 @@
     <tr mat-header-row *matHeaderRowDef="opticsColumns"></tr>
     <tr mat-row *matRowDef="let row; columns: opticsColumns;"></tr>
   </table>
+  </div>
   </div>
   }
   }
@@ -525,6 +527,7 @@
   <div class="section-block">
   <div class="section-title">Optic Modules</div>
   <div class="optics-legend">Rx threshold: warn &lt; -20 dBm, fail &lt; -25 dBm &bull; Tx threshold: warn &lt; -8 dBm, fail &lt; -12 dBm</div>
+  <div class="optics-table-scroll">
   <table mat-table [dataSource]="sortedPortOptics">
     <ng-container matColumnDef="port_id">
       <th mat-header-cell *matHeaderCellDef>Port</th>
@@ -561,6 +564,7 @@
     <tr mat-header-row *matHeaderRowDef="opticsColumns"></tr>
     <tr mat-row *matRowDef="let row; columns: opticsColumns;"></tr>
   </table>
+  </div>
   </div>
   }
   }

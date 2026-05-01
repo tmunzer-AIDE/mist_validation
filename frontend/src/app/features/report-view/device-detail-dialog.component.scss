@@ -323,6 +323,13 @@ table {
   padding: 0 16px 8px;
 }
 
+// Optics table has 7 columns (port/model/serial/part/rx/tx/temp) — wider than the
+// drawer can accommodate, so scope a horizontal scroll just to this wrapper rather
+// than letting the whole drawer body overflow.
+.optics-table-scroll {
+  overflow-x: auto;
+}
+
 // ── Inline status text colors (override global if present) ──
 .status-pass { color: var(--success-strong); font-weight: 600; }
 .status-warn { color: var(--warn-strong); font-weight: 600; }
