@@ -161,13 +161,15 @@ class _ProgressTracker:
     def set_execution_total(self, cable_test_ports: int) -> None:
         """Switch from discovery (indeterminate) to execution (determinate).
 
-        Execution-phase steps: aps, switches, gateways, cable_tests (N ports), config_errors.
-        If cable_test_ports == 0, cable_tests still counts as 1 step.
+        Execution-phase steps: aps, switches, gateways, cable_tests (N ports),
+        config_errors, marvis_minis. If cable_test_ports == 0, cable_tests still
+        counts as 1 step.
         """
-        # 4 = aps + switches + gateways + config_errors. Cable tests contribute either
-        # `cable_test_ports` ticks (one per port via complete_cable_test_port) or 1 tick
-        # when the step is skipped — hence max(cable_test_ports, 1).
-        self.overall_total = 4 + max(cable_test_ports, 1)
+        # 5 = aps + switches + gateways + config_errors + marvis_minis. Cable tests
+        # contribute either `cable_test_ports` ticks (one per port via
+        # complete_cable_test_port) or 1 tick when the step is skipped — hence
+        # max(cable_test_ports, 1).
+        self.overall_total = 5 + max(cable_test_ports, 1)
         self.overall_completed = 0
         self._cable_test_total = max(0, cable_test_ports)
         self._cable_tests_done = 0
