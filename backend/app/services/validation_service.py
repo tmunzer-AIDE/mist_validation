@@ -2416,10 +2416,12 @@ async def check_org_api_budget(
             mistapi.arun(org_inventory.countOrgInventory, session, org_id, distinct="type"),
             mistapi.arun(org_sites.countOrgSites, session, org_id, distinct="id"),
         )
-    except Exception as e:
-        logger.warning("budget_check_failed error=%s", str(e))
+    except Exception:
+        # Don't surface raw exception text — could leak internal details and gives an
+        # unstable client-facing message. Full traceback stays in server logs.
+        logger.warning("budget_check_failed", exc_info=True)
         return {
-            "allowed": False, "reason": f"Failed to check API budget: {e}",
+            "allowed": False, "reason": "Unable to check API budget. Please try again.",
             "available": 0, "estimated": 0,
             "config_errors_allowed": False, "config_errors_reason": "Budget check failed",
             "site_count": 0, "device_counts": {},
@@ -2518,10 +2520,11 @@ async def check_site_api_budget(
             mistapi.arun(self_usage.getSelfApiUsage, session),
             mistapi.arun(org_inventory.getOrgInventory, session, org_id, site_id=site_id, limit=1000),
         )
-    except Exception as e:
-        logger.warning("site_budget_check_failed error=%s", str(e))
+    except Exception:
+        # Don't surface raw exception text to the client. Full traceback in server logs.
+        logger.warning("site_budget_check_failed", exc_info=True)
         return {
-            "allowed": False, "reason": f"Failed to check API budget: {e}",
+            "allowed": False, "reason": "Unable to check API budget. Please try again.",
             "available": 0, "estimated": 0,
             "config_errors_allowed": False, "config_errors_reason": "Budget check failed",
             "site_count": 1, "device_counts": {"ap": 0, "switch": 0, "gateway": 0},

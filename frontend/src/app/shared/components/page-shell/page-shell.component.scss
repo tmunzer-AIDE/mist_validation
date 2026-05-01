@@ -152,6 +152,11 @@
 .crumb-link {
   cursor: pointer;
   color: var(--muted-strong);
+  // Neutralize <button> defaults — keep link-like appearance, retain keyboard focus
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
 
   &:hover { color: var(--ink); text-decoration: underline; }
 }

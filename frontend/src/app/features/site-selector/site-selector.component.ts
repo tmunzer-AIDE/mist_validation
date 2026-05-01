@@ -121,6 +121,11 @@ export class SiteSelectorComponent implements OnInit {
   scope = signal<'site' | 'org'>('site');
   budget = signal<BudgetInfo | null>(null);
   budgetLoading = signal(false);
+  // Monotonic request id — fetchBudget can fire from multiple inputs (org, site,
+  // toggle changes). If an older response arrives after a newer one was issued, it
+  // would clobber the current selection. We capture the id at request time and
+  // ignore responses whose id no longer matches the latest.
+  private budgetReqId = 0;
 
   generating = signal(false);
   startError = signal('');
@@ -315,6 +320,9 @@ export class SiteSelectorComponent implements OnInit {
   }
 
   fetchBudget(): void {
+    // Bump unconditionally so any in-flight request is marked stale, even if we
+    // early-return below (e.g. user clears site selection while a request is pending).
+    const reqId = ++this.budgetReqId;
     const auth = this.authInfo();
     const org = this.currentOrg() ?? (auth.orgs.length === 1 ? auth.orgs[0] : null);
     if (!org) return;
@@ -337,6 +345,7 @@ export class SiteSelectorComponent implements OnInit {
     this.budgetLoading.set(true);
     this.api.get<BudgetInfo>(`reports/budget?${params.toString()}`).subscribe({
       next: (budget) => {
+        if (reqId !== this.budgetReqId) return; // stale — a newer request superseded this one
         this.budget.set(budget);
         this.budgetLoading.set(false);
         if (!budget.config_errors_allowed) {
@@ -347,6 +356,7 @@ export class SiteSelectorComponent implements OnInit {
         }
       },
       error: () => {
+        if (reqId !== this.budgetReqId) return;
         this.budgetLoading.set(false);
         this.budget.set(null);
       },

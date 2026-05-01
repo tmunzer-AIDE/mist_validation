@@ -2,7 +2,7 @@
   <div class="dh-icon"><mat-icon>{{ deviceIcon }}</mat-icon></div>
   <div class="dh-info">
     <div class="dh-name-row">
-      <span class="dh-name mono">{{ data.device.name || '&lt;unnamed&gt;' }}</span>
+      <span class="dh-name mono">{{ data.device.name || 'Unnamed' }}</span>
       <app-status-badge [status]="overallStatus" size="sm" />
     </div>
     <div class="dh-meta">

@@ -13,8 +13,8 @@ export class MvToggleComponent {
 
   toggle(): void {
     if (this.disabled) return;
-    const next = !this.checked;
-    this.checked = next;
-    this.change.emit({ checked: next });
+    // Don't mutate the @Input — emit the new value and let the parent update [checked].
+    // All current callers use one-way [checked]+(change) binding, so this is safe.
+    this.change.emit({ checked: !this.checked });
   }
 }

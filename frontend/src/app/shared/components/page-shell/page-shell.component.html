@@ -68,7 +68,7 @@
                 <mat-icon>chevron_right</mat-icon>
               }
               @if (item.route && !last) {
-                <a class="crumb-link" (click)="onCrumb(item)">{{ item.label }}</a>
+                <button type="button" class="crumb-link" (click)="onCrumb(item)">{{ item.label }}</button>
               } @else {
                 <span [class.crumb-current]="last">{{ item.label }}</span>
               }
