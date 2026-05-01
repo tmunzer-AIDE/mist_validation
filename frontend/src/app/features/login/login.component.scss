@@ -23,9 +23,7 @@
 .brand-mark {
   width: 28px;
   height: 28px;
-
-  rect { fill: var(--accent); }
-  path { stroke: var(--accent-fg); }
+  // Colors live in the SVG itself (shared with shell + favicon).
 }
 
 .brand-text {

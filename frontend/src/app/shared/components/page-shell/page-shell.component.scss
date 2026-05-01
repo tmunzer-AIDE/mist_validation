@@ -27,9 +27,8 @@
   width: 28px;
   height: 28px;
   flex-shrink: 0;
-
-  rect { fill: var(--accent); }
-  path { stroke: var(--accent-fg); }
+  // Colors live in the SVG itself (gradient + opacities) so the same logo
+  // ships to favicon, login, and shell with no theme drift.
 }
 
 .brand-text { min-width: 0; flex: 1; }
