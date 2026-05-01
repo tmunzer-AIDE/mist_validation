@@ -212,50 +212,45 @@
           </div>
         </div>
 
-        <!-- Aggregated variables -->
-        @if (groupedVariables().length > 0) {
+        <!-- Missing template variables -->
+        @if (missingVariables().length > 0) {
           <div class="mv-card vars-card">
             <div class="scorecard-head">
-              <span>Template variables</span>
-              <span class="head-count">{{ groupedVariables().length }} unique</span>
+              <span>Missing template variables</span>
+              <span class="head-count">
+                {{ missingVariables().length }} undefined ·
+                {{ totalMissingOccurrences() }} site occurrence{{
+                  totalMissingOccurrences() === 1 ? '' : 's'
+                }}
+              </span>
             </div>
             <div class="vars-table-wrap">
               <table class="vars-table">
                 <thead>
                   <tr>
                     <th>Variable</th>
-                    <th>Value</th>
-                    <th>Used in</th>
-                    <th class="th-end">Status</th>
+                    <th>Missing in</th>
+                    <th class="th-end">Sites</th>
                   </tr>
                 </thead>
                 <tbody>
-                  @for (g of groupedVariables(); track g.variable) {
-                    <tr [class.row-fail]="g.status === 'fail'" [class.row-warn]="g.status === 'warn'">
-                      <td class="mono col-var">{{ formatVar(g.variable) }}</td>
-                      <td class="mono col-value" [class.fail-text]="g.status === 'fail'">
-                        {{ g.value || '—' }}
-                      </td>
+                  @for (v of missingVariables(); track v.variable) {
+                    <tr class="row-fail">
+                      <td class="mono col-var">{{ formatVar(v.variable) }}</td>
                       <td class="col-locs">
                         <div class="loc-chips">
-                          @for (occ of g.occurrences; track $index) {
-                            <span
-                              class="loc-chip"
-                              [matTooltip]="
-                                occ.site_name +
-                                ' · ' +
-                                (occ.template_type || 'site') +
-                                ' / ' +
-                                (occ.template_name || '—')
-                              "
-                            >
-                              {{ occ.site_name }}
-                            </span>
+                          @for (s of v.missing_sites; track s) {
+                            <span class="loc-chip miss-chip">{{ s }}</span>
                           }
                         </div>
                       </td>
-                      <td class="td-end">
-                        <app-status-badge [status]="g.status" size="sm" />
+                      <td class="td-end col-counts">
+                        <span class="count-fail">{{ v.missing_sites.length }}</span>
+                        @if (v.defined_count > 0) {
+                          <span class="count-defined"
+                            >+ {{ v.defined_count }} defined</span
+                          >
+                        }
                       </td>
                     </tr>
                   }

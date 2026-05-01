@@ -362,44 +362,43 @@ export class OrgReportViewComponent implements OnInit, OnDestroy {
       .sort((a, b) => b.fail + b.warn - (a.fail + a.warn) || a.label.localeCompare(b.label));
   });
 
-  // Aggregate template variables across all sites — each variable once, with site/template locations
-  groupedVariables = computed(() => {
+  // Variables that are undefined in at least one site — actionable view for org reports.
+  // Each row: variable + the sites where it's missing + how many sites already define it.
+  missingVariables = computed(() => {
     const sites = this.report()?.result?.sites ?? {};
     const groups = new Map<
       string,
-      {
-        variable: string;
-        value: string;
-        status: string;
-        occurrences: { site_name: string; template_type?: string; template_name?: string; status: string }[];
-      }
+      { variable: string; missing: Set<string>; defined: Set<string> }
     >();
     for (const [siteId, sr] of Object.entries(sites)) {
-      const siteName = sr.site_info?.site_name ?? siteId.slice(0, 8);
+      const siteName = sr.site_info?.site_name || siteId.slice(0, 8);
       for (const v of sr.template_variables ?? []) {
-        const existing = groups.get(v.variable);
-        const occ = {
-          site_name: siteName,
-          template_type: v.template_type,
-          template_name: v.template_name,
-          status: v.status,
-        };
-        if (existing) {
-          existing.occurrences.push(occ);
-          if (v.status === 'fail') existing.status = 'fail';
-          else if (v.status === 'warn' && existing.status !== 'fail') existing.status = 'warn';
-        } else {
-          groups.set(v.variable, {
-            variable: v.variable,
-            value: v.value ?? '',
-            status: v.status,
-            occurrences: [occ],
-          });
+        let g = groups.get(v.variable);
+        if (!g) {
+          g = { variable: v.variable, missing: new Set(), defined: new Set() };
+          groups.set(v.variable, g);
         }
+        if (v.status === 'fail') g.missing.add(siteName);
+        else g.defined.add(siteName);
       }
     }
-    return [...groups.values()].sort((a, b) => a.variable.localeCompare(b.variable));
+    return [...groups.values()]
+      .filter((g) => g.missing.size > 0)
+      .map((g) => ({
+        variable: g.variable,
+        missing_sites: [...g.missing].sort((a, b) => a.localeCompare(b)),
+        defined_count: g.defined.size,
+      }))
+      .sort(
+        (a, b) =>
+          b.missing_sites.length - a.missing_sites.length ||
+          a.variable.localeCompare(b.variable),
+      );
   });
+
+  totalMissingOccurrences = computed(() =>
+    this.missingVariables().reduce((sum, v) => sum + v.missing_sites.length, 0),
+  );
 
   formatVar(name: string): string {
     return '{{' + name + '}}';

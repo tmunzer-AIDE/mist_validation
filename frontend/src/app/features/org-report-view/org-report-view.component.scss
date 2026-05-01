@@ -488,6 +488,29 @@
   border-radius: var(--radius-sm);
   color: var(--ink-soft);
   cursor: default;
+
+  &.miss-chip {
+    background: var(--danger-soft);
+    border-color: color-mix(in srgb, var(--danger) 22%, var(--border));
+    color: var(--danger-strong);
+  }
+}
+
+.col-counts {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+
+  .count-fail {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--danger-strong);
+  }
+
+  .count-defined {
+    font-size: 11.5px;
+    color: var(--muted-strong);
+    margin-left: 6px;
+  }
 }
 
 // ── Sites table view ──
