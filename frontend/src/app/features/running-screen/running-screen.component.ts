@@ -49,6 +49,7 @@ const PHASE_BY_STEP: Record<string, string> = {
   gateways: 'Per-device',
   cable_tests: 'Diagnostics',
   config_errors: 'Diagnostics',
+  marvis_minis: 'Diagnostics',
   // Org report
   preflight: 'Setup',
   org_data: 'Setup',
