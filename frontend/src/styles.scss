@@ -4,7 +4,7 @@
 $theme: mat.define-theme((
   color: (
     theme-type: light,
-    primary: mat.$violet-palette,
+    primary: mat.$azure-palette,
     tertiary: mat.$cyan-palette,
   ),
   typography: (
@@ -33,10 +33,10 @@ html {
   --border-soft: #eef0f3;
   --border-strong: #d1d5db;
 
-  // Brand (indigo)
-  --accent: #4f46e5;
-  --accent-strong: #4338ca;
-  --accent-soft: #eef2ff;
+  // Brand (blue)
+  --accent: #2196f3;
+  --accent-strong: #1976d2;
+  --accent-soft: #e3f2fd;
   --accent-fg: #ffffff;
 
   // Status — each has soft/strong pair
