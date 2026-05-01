@@ -225,7 +225,7 @@ class _ProgressTracker:
                 cable_remaining = self._cable_test_max_ports * self.CABLE_SECONDS_PER_PORT
 
         marvis_remaining = 0
-        if marvis_step_status in ("pending", "running"):
+        if marvis_active:
             if self._marvis_finish_at is not None:
                 marvis_remaining = max(0, int(self._marvis_finish_at - time.monotonic()))
             else:
