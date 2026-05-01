@@ -548,6 +548,8 @@ def generate_pdf(report) -> bytes:
         elements.append(Spacer(1, 0.3 * cm))
 
         for ap in marvis.get("ap_results", []):
+            if not isinstance(ap, dict):
+                continue
             ap_title = (
                 f"<b>{_esc(ap.get('ap_name') or '(unnamed)')}</b> — "
                 f"{_esc(ap.get('switch_name', '?'))}/{_esc(ap.get('switch_port', '?'))}"
@@ -559,9 +561,15 @@ def generate_pdf(report) -> bytes:
             data: list = [header]
             row_status_colors: list[list] = [[None] * 5]
             for vlan in ap.get("vlans", []):
+                if not isinstance(vlan, dict):
+                    continue
                 row = [_p(str(vlan.get("vlan", "?")))]
                 color_row: list = [None]
-                tests_by_type = {t.get("test_type"): t for t in vlan.get("tests", [])}
+                tests_by_type = {
+                    t.get("test_type"): t
+                    for t in vlan.get("tests", [])
+                    if isinstance(t, dict)
+                }
                 for tt in ("DHCP", "ARP", "DNS", "CURL"):
                     test = tests_by_type.get(tt)
                     if not test:
@@ -580,7 +588,7 @@ def generate_pdf(report) -> bytes:
 
             w = _PAGE_WIDTH
             cw = [w * 0.10, w * 0.225, w * 0.225, w * 0.225, w * 0.225]
-            tbl = Table(data, colWidths=cw)
+            tbl = Table(data, colWidths=cw, repeatRows=1)
             extra_styles: list = []
             for r_idx, color_row in enumerate(row_status_colors):
                 for c_idx, color in enumerate(color_row):
