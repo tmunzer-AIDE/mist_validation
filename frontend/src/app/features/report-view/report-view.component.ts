@@ -627,7 +627,7 @@ export class ReportViewComponent implements OnInit, OnDestroy {
   ): void {
     this.dialog.open(DeviceDetailDialogComponent, {
       data: { device: device as DeviceResult | SwitchResult | GatewayResult, type },
-      width: '580px',
+      width: '700px',
       maxWidth: '92vw',
       height: '100vh',
       maxHeight: '100vh',
