@@ -1,6 +1,5 @@
 import { Component, computed, input } from '@angular/core';
 import { NgClass } from '@angular/common';
-import { MatIconModule } from '@angular/material/icon';
 
 function statusLabel(s: string): string {
   switch (s) {
@@ -23,36 +22,21 @@ function statusLabel(s: string): string {
   }
 }
 
-function statusIcon(s: string): string {
-  switch (s) {
-    case 'pass':
-    case 'completed':
-      return 'check_circle';
-    case 'fail':
-    case 'failed':
-      return 'cancel';
-    case 'warn':
-      return 'warning';
-    case 'pending':
-      return 'schedule';
-    case 'running':
-      return 'hourglass_empty';
-    default:
-      return 'info';
-  }
-}
-
 @Component({
   selector: 'app-status-badge',
   standalone: true,
-  imports: [NgClass, MatIconModule],
-  templateUrl: './status-badge.component.html',
+  imports: [NgClass],
+  template: `<span class="badge" [ngClass]="classes()">{{ displayLabel() }}</span>`,
   styleUrl: './status-badge.component.scss',
 })
 export class StatusBadgeComponent {
   status = input<string>('info');
   label = input<string>('');
+  size = input<'sm' | 'md'>('md');
 
   displayLabel = computed(() => this.label() || statusLabel(this.status()));
-  icon = computed(() => statusIcon(this.status()));
+  classes = computed(() => ({
+    [`status-${this.status()}`]: true,
+    'badge--sm': this.size() === 'sm',
+  }));
 }

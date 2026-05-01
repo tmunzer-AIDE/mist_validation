@@ -1,0 +1,97 @@
+<div class="mv-shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 32 32" aria-hidden="true">
+          <rect x="1" y="1" width="30" height="30" rx="7" />
+          <path
+            d="M7 22V10l4 7 4-7v12M17 10l3.5 12L24 10"
+            fill="none"
+            stroke-width="2.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </div>
+      <div class="brand-text">
+        <div class="brand-name">Mist Validation</div>
+        <div class="brand-sub">Post-deployment</div>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <div class="nav-section">Workspace</div>
+      @for (item of navItems; track item.id) {
+        <button
+          type="button"
+          class="nav-link"
+          [class.active]="activeRoute() === item.id"
+          (click)="onNav(item.id)"
+        >
+          <mat-icon>{{ item.icon }}</mat-icon>
+          <span>{{ item.label }}</span>
+        </button>
+      }
+    </nav>
+
+    <div class="sidebar-foot">
+      @if (githubUrl(); as url) {
+        <a class="nav-link external" [href]="url" target="_blank" rel="noreferrer">
+          <mat-icon>code</mat-icon>
+          <span>GitHub</span>
+          <mat-icon class="ext-icon">open_in_new</mat-icon>
+        </a>
+      }
+      @if (dockerUrl(); as url) {
+        <a class="nav-link external" [href]="url" target="_blank" rel="noreferrer">
+          <mat-icon>inventory_2</mat-icon>
+          <span>Docker Hub</span>
+          <mat-icon class="ext-icon">open_in_new</mat-icon>
+        </a>
+      }
+      @if (userLabel(); as user) {
+        <div class="user-chip" [title]="user">
+          <mat-icon>person</mat-icon>
+          <span class="user-name">{{ user }}</span>
+        </div>
+      }
+    </div>
+  </aside>
+
+  <div class="mv-shell-body">
+    <header class="mv-page-header">
+      <div class="mv-page-header-text">
+        @if (breadcrumb().length > 0) {
+          <div class="mv-breadcrumb">
+            @for (item of breadcrumb(); track $index; let last = $last) {
+              @if ($index > 0) {
+                <mat-icon>chevron_right</mat-icon>
+              }
+              @if (item.route && !last) {
+                <a class="crumb-link" (click)="onCrumb(item)">{{ item.label }}</a>
+              } @else {
+                <span [class.crumb-current]="last">{{ item.label }}</span>
+              }
+            }
+          </div>
+        }
+        <h1 class="mv-page-title">
+          {{ title() }}
+          @if (titleSuffix()) {
+            <span class="mv-page-title-suffix">{{ titleSuffix() }}</span>
+          }
+        </h1>
+        @if (subtitle()) {
+          <div class="mv-page-sub">{{ subtitle() }}</div>
+        }
+      </div>
+      <div class="mv-page-actions">
+        <ng-content select="[shell-actions]"></ng-content>
+      </div>
+    </header>
+
+    <main class="mv-page-content">
+      <ng-content></ng-content>
+    </main>
+  </div>
+</div>

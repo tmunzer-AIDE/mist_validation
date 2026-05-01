@@ -12,20 +12,28 @@ import {
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
-import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
-import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
-import { MatSlideToggleModule } from '@angular/material/slide-toggle';
-import { MatTableModule } from '@angular/material/table';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MvToggleComponent } from '../../shared/components/mv-toggle/mv-toggle.component';
 import { ApiService } from '../../core/services/api.service';
 import { WsService } from '../../core/services/ws.service';
+import {
+  PageShellComponent,
+  ShellRoute,
+} from '../../shared/components/page-shell/page-shell.component';
 import { StatusBadgeComponent } from '../../shared/components/status-badge/status-badge.component';
 import { ReportViewComponent } from '../report-view/report-view.component';
+import { RunningScreenComponent } from '../running-screen/running-screen.component';
+import {
+  checkLabel,
+  deviceTypeIcon,
+  deviceTypeLabel,
+  worstStatus,
+} from '../../shared/utils/report-helpers';
 
 interface ProgressStep {
   id: string;
@@ -51,6 +59,16 @@ interface OrgReportResponse {
   completed_at: string | null;
 }
 
+interface OrgDevice {
+  device_id: string;
+  name: string;
+  mac: string;
+  model: string;
+  checks: { check: string; status: string; value?: string; expected?: string }[];
+  events?: { status: string }[];
+  [key: string]: unknown;
+}
+
 interface SiteResult {
   site_info: {
     site_name: string;
@@ -61,10 +79,17 @@ interface SiteResult {
     site_wlans: { ssid: string }[];
     device_summary: Record<string, { total: number; failed: number }>;
   };
-  template_variables: { variable: string; status: string; value: string; defined: boolean }[];
-  aps: unknown[];
-  switches: unknown[];
-  gateways: unknown[];
+  template_variables: {
+    variable: string;
+    status: string;
+    value: string;
+    defined: boolean;
+    template_type?: string;
+    template_name?: string;
+  }[];
+  aps: OrgDevice[];
+  switches: OrgDevice[];
+  gateways: OrgDevice[];
   summary: { pass: number; fail: number; warn: number; info: number };
 }
 
@@ -129,18 +154,17 @@ function siteMatchesFilter(entry: SiteEntry, status: StatusFilter): boolean {
     DatePipe,
     FormsModule,
     MatButtonModule,
-    MatCardModule,
     MatFormFieldModule,
     MatIconModule,
     MatInputModule,
-    MatProgressBarModule,
     MatProgressSpinnerModule,
     MatSelectModule,
-    MatSlideToggleModule,
-    MatTableModule,
     MatTooltipModule,
+    MvToggleComponent,
+    PageShellComponent,
     StatusBadgeComponent,
     ReportViewComponent,
+    RunningScreenComponent,
   ],
   templateUrl: './org-report-view.component.html',
   styleUrl: './org-report-view.component.scss',
@@ -149,6 +173,7 @@ export class OrgReportViewComponent implements OnInit, OnDestroy {
   jobId = input.required<string>();
 
   @Output() back = new EventEmitter<void>();
+  @Output() navigate = new EventEmitter<ShellRoute>();
 
   private api = inject(ApiService);
   private ws = inject(WsService);
@@ -177,7 +202,7 @@ export class OrgReportViewComponent implements OnInit, OnDestroy {
       const varsTotal = uniqueVars.size;
       const varsMissing = uniqueMissing.size;
       const varsDefined = varsTotal - varsMissing;
-      entries.push({
+      const entry: SiteEntry = {
         site_id: siteId,
         site_name: sr.site_info.site_name || siteId.substring(0, 8),
         variables_total: varsTotal,
@@ -188,8 +213,10 @@ export class OrgReportViewComponent implements OnInit, OnDestroy {
         sw_counts: countCheckStatuses(sr.switches),
         gw_counts: countCheckStatuses(sr.gateways),
         has_devices: sr.aps.length + sr.switches.length + sr.gateways.length > 0,
-        worst_status: sr.summary.fail > 0 ? 'fail' : sr.summary.warn > 0 ? 'warn' : 'pass',
-      });
+        worst_status: 'pass',
+      };
+      entry.worst_status = siteWorstStatus(entry);
+      entries.push(entry);
     }
     return entries;
   });
@@ -222,12 +249,171 @@ export class OrgReportViewComponent implements OnInit, OnDestroy {
     return entries;
   });
 
-  filteredCount = computed(() => {
-    const filter = this.statusFilter();
-    return this.siteEntries().filter((e) => siteMatchesFilter(e, filter)).length;
+  // ── Viz mode (Scorecard / Sites) ──
+  vizMode = signal<'scorecard' | 'sites'>('scorecard');
+  setVizMode(m: 'scorecard' | 'sites'): void {
+    this.vizMode.set(m);
+  }
+
+  // ── Score (org-wide) ──
+  scoreValue = computed(() => {
+    const s = this.report()?.result?.summary;
+    if (!s) return 0;
+    const total = s.pass + s.warn + s.fail;
+    if (total === 0) return 0;
+    return Math.round((s.pass / total) * 100);
   });
 
-  siteColumns = ['site_name', 'variables', 'aps', 'switches', 'gateways'];
+  scoreStatus = computed<'pass' | 'warn' | 'fail'>(() => {
+    const v = this.scoreValue();
+    if (v >= 90) return 'pass';
+    if (v >= 75) return 'warn';
+    return 'fail';
+  });
+
+  scoreLabel = computed(() => {
+    const s = this.scoreStatus();
+    return s === 'pass'
+      ? 'Production ready'
+      : s === 'warn'
+        ? 'Action recommended'
+        : 'Action required';
+  });
+
+  // ── Flat device list across all sites ──
+  allDevices = computed(() => {
+    const sites = this.report()?.result?.sites ?? {};
+    const out: {
+      type: 'ap' | 'switch' | 'gateway';
+      site_id: string;
+      site_name: string;
+      checks: { check: string; status: string; value?: string; expected?: string }[];
+    }[] = [];
+    for (const [siteId, sr] of Object.entries(sites)) {
+      const siteName = sr.site_info?.site_name ?? siteId.slice(0, 8);
+      for (const d of sr.aps ?? []) {
+        out.push({ ...d, type: 'ap', site_id: siteId, site_name: siteName });
+      }
+      for (const d of sr.switches ?? []) {
+        out.push({ ...d, type: 'switch', site_id: siteId, site_name: siteName });
+      }
+      for (const d of sr.gateways ?? []) {
+        out.push({ ...d, type: 'gateway', site_id: siteId, site_name: siteName });
+      }
+    }
+    return out;
+  });
+
+  byTypeStats = computed(() => {
+    const types: ('ap' | 'switch' | 'gateway')[] = ['ap', 'switch', 'gateway'];
+    return types
+      .map((t) => {
+        let pass = 0, warn = 0, fail = 0, total = 0;
+        for (const d of this.allDevices()) {
+          if (d.type !== t) continue;
+          total++;
+          const s = worstStatus(d.checks ?? []);
+          if (s === 'pass') pass++;
+          else if (s === 'warn') warn++;
+          else if (s === 'fail') fail++;
+        }
+        return {
+          type: t,
+          label: deviceTypeLabel(t),
+          icon: deviceTypeIcon(t),
+          total,
+          pass,
+          warn,
+          fail,
+        };
+      })
+      .filter((s) => s.total > 0);
+  });
+
+  problematicSites = computed(() => {
+    return this.siteEntries().filter((e) => e.has_devices && e.worst_status !== 'pass');
+  });
+
+  // Per-check coverage across all devices in all sites
+  checkCoverage = computed(() => {
+    const devices = this.allDevices();
+    const ids = new Set<string>();
+    for (const d of devices) for (const c of d.checks ?? []) ids.add(c.check);
+    return Array.from(ids)
+      .map((id) => {
+        const applicable = devices.filter((d) =>
+          (d.checks ?? []).some((c) => c.check === id),
+        );
+        const status = (devChecks: OrgDevice['checks']) =>
+          devChecks.find((c) => c.check === id)?.status ?? 'info';
+        const pass = applicable.filter((d) => status(d.checks) === 'pass').length;
+        const warn = applicable.filter((d) => status(d.checks) === 'warn').length;
+        const fail = applicable.filter((d) => status(d.checks) === 'fail').length;
+        return {
+          check: id,
+          label: checkLabel(id),
+          total: applicable.length,
+          pass,
+          warn,
+          fail,
+        };
+      })
+      .filter((c) => c.total > 0)
+      .sort((a, b) => b.fail + b.warn - (a.fail + a.warn) || a.label.localeCompare(b.label));
+  });
+
+  // Aggregate template variables across all sites — each variable once, with site/template locations
+  groupedVariables = computed(() => {
+    const sites = this.report()?.result?.sites ?? {};
+    const groups = new Map<
+      string,
+      {
+        variable: string;
+        value: string;
+        status: string;
+        occurrences: { site_name: string; template_type?: string; template_name?: string; status: string }[];
+      }
+    >();
+    for (const [siteId, sr] of Object.entries(sites)) {
+      const siteName = sr.site_info?.site_name ?? siteId.slice(0, 8);
+      for (const v of sr.template_variables ?? []) {
+        const existing = groups.get(v.variable);
+        const occ = {
+          site_name: siteName,
+          template_type: v.template_type,
+          template_name: v.template_name,
+          status: v.status,
+        };
+        if (existing) {
+          existing.occurrences.push(occ);
+          if (v.status === 'fail') existing.status = 'fail';
+          else if (v.status === 'warn' && existing.status !== 'fail') existing.status = 'warn';
+        } else {
+          groups.set(v.variable, {
+            variable: v.variable,
+            value: v.value ?? '',
+            status: v.status,
+            occurrences: [occ],
+          });
+        }
+      }
+    }
+    return [...groups.values()].sort((a, b) => a.variable.localeCompare(b.variable));
+  });
+
+  formatVar(name: string): string {
+    return '{{' + name + '}}';
+  }
+
+  siteFindingHint(s: SiteEntry): string {
+    const fail = s.ap_counts.fail + s.sw_counts.fail + s.gw_counts.fail;
+    const warn = s.ap_counts.warn + s.sw_counts.warn + s.gw_counts.warn;
+    const parts: string[] = [];
+    if (fail) parts.push(`${fail} failing`);
+    if (warn) parts.push(`${warn} warning${warn === 1 ? '' : 's'}`);
+    if (s.variables_missing) parts.push(`${s.variables_missing} undefined var${s.variables_missing === 1 ? '' : 's'}`);
+    return parts.join(' · ') || 'Review details';
+  }
 
   progressPercent(): number {
     const p = this.report()?.progress;
@@ -278,7 +464,7 @@ export class OrgReportViewComponent implements OnInit, OnDestroy {
       progress: { overall_completed: 0, overall_total: 0, steps: [] },
       result: sr,
       error: null,
-      include_cable_tests: false,
+      include_cable_tests: r.include_cable_tests,
       include_config_errors: r.include_config_errors,
       created_at: r.created_at,
       completed_at: r.completed_at,
@@ -289,6 +475,20 @@ export class OrgReportViewComponent implements OnInit, OnDestroy {
   backToOverview(): void {
     this.selectedSiteId.set(null);
     this.selectedSiteReport.set(null);
+  }
+
+  totalDevices(): number {
+    const c = this.report()?.result?.org_info?.device_counts;
+    if (!c) return 0;
+    return (c.aps ?? 0) + (c.switches ?? 0) + (c.gateways ?? 0);
+  }
+
+  onShellNavigate(route: ShellRoute): void {
+    if (route === 'site_selector') {
+      this.back.emit();
+    } else {
+      this.navigate.emit(route);
+    }
   }
 
   ngOnInit(): void {

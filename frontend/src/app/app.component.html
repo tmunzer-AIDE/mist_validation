@@ -8,22 +8,30 @@
       [selectedOrg]="selectedOrg()"
       (orgSelected)="selectedOrg.set($event)"
       (reportStarted)="onReportStarted($event)"
-      (showReference)="pushState('validation_reference')"
+      (navigate)="navigateFromShell($event)"
+    />
+  }
+  @case ('reports') {
+    <app-reports
+      (navigate)="navigateFromShell($event)"
+      (openReport)="onReportStarted($event)"
     />
   }
   @case ('validation_reference') {
-    <app-validation-reference (back)="showSiteSelector()" />
+    <app-validation-reference (navigate)="navigateFromShell($event)" />
   }
   @case ('report') {
     <app-report-view
       [jobId]="activeJobId()!"
       (back)="showSiteSelector()"
+      (navigate)="navigateFromShell($event)"
     />
   }
   @case ('org_report') {
     <app-org-report-view
       [jobId]="activeJobId()!"
       (back)="showSiteSelector()"
+      (navigate)="navigateFromShell($event)"
     />
   }
 }

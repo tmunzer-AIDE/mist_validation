@@ -2358,6 +2358,104 @@ async def check_org_api_budget(
     }
 
 
+async def check_site_api_budget(
+    session: APISession,
+    org_id: str,
+    site_id: str,
+    include_config_errors: bool = False,
+    include_cable_tests: bool = False,
+) -> dict:
+    """Pre-flight check: estimate API call budget for a single-site report."""
+    from math import ceil
+    try:
+        usage_resp, inv_resp = await asyncio.gather(
+            mistapi.arun(self_usage.getSelfApiUsage, session),
+            mistapi.arun(org_inventory.getOrgInventory, session, org_id, site_id=site_id, limit=1000),
+        )
+    except Exception as e:
+        logger.warning("site_budget_check_failed error=%s", str(e))
+        return {
+            "allowed": False, "reason": f"Failed to check API budget: {e}",
+            "available": 0, "estimated": 0,
+            "config_errors_allowed": False, "config_errors_reason": "Budget check failed",
+            "site_count": 1, "device_counts": {"ap": 0, "switch": 0, "gateway": 0},
+        }
+
+    requests_used = 0
+    request_limit = 5000
+    if usage_resp.status_code == 200 and isinstance(usage_resp.data, dict):
+        requests_used = usage_resp.data.get("requests", 0)
+        request_limit = usage_resp.data.get("request_limit", 5000)
+    available = request_limit - requests_used
+
+    device_counts = {"ap": 0, "switch": 0, "gateway": 0}
+    if inv_resp.status_code == 200 and isinstance(inv_resp.data, list):
+        for d in inv_resp.data:
+            if isinstance(d, dict):
+                dtype = d.get("type", "")
+                if dtype in device_counts:
+                    device_counts[dtype] += 1
+
+    n_ap = device_counts["ap"]
+    n_sw = device_counts["switch"]
+    n_gw = device_counts["gateway"]
+    total = n_ap + n_sw + n_gw
+
+    # Site-report cost model:
+    #   base: site/settings + 4 templates + inventory + events + self (~10)
+    #   per AP: stats (~1)
+    #   per switch: stats + optics (~2)
+    #   per gateway: stats + optics + ports (~3)
+    #   cable tests: ~4 calls per switch (TDR runs)
+    #   config errors: 1 call per (switch + gateway)
+    base_calls = 10
+    pagination = ceil(total / 1000) * 2 if total > 0 else 0
+    per_device_calls = n_ap + n_sw * 2 + n_gw * 3
+    cable_test_calls = n_sw * 4 if include_cable_tests else 0
+    config_error_calls = (n_sw + n_gw) if include_config_errors else 0
+
+    estimated_base = base_calls + pagination + per_device_calls + cable_test_calls
+    estimated_total = estimated_base + config_error_calls
+    required = int(estimated_total * 1.15)
+
+    allowed = required <= available
+
+    config_errors_allowed = True
+    config_errors_reason = ""
+    if include_config_errors:
+        required_with_ce = int((estimated_base + config_error_calls) * 1.15)
+        required_without_ce = int(estimated_base * 1.15)
+        if required_with_ce > available and required_without_ce <= available:
+            config_errors_allowed = False
+            config_errors_reason = (
+                f"Config errors need ~{config_error_calls} extra calls. "
+                f"Only {available} available (need {required_with_ce})."
+            )
+        elif required_with_ce > available:
+            config_errors_allowed = False
+            config_errors_reason = "Insufficient API budget for any site report."
+    else:
+        config_errors_reason = "Not requested"
+
+    reason = "" if allowed else (
+        f"Estimated {required} calls but only {available} available "
+        f"({requests_used}/{request_limit} used). "
+        f"Site has {total} devices ({n_ap} APs, {n_sw} switches, {n_gw} gateways)."
+    )
+
+    return {
+        "allowed": allowed,
+        "reason": reason,
+        "available": available,
+        "estimated": required,
+        "config_errors_allowed": config_errors_allowed,
+        "config_errors_reason": config_errors_reason,
+        "config_error_calls": config_error_calls,
+        "site_count": 1,
+        "device_counts": device_counts,
+    }
+
+
 async def _fetch_org_device_events(
     session: APISession, org_id: str,
 ) -> tuple[dict[str, dict], list[dict]]:

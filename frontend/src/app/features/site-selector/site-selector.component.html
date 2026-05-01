@@ -1,261 +1,392 @@
-<div class="page-container">
-  <div class="page-header">
-    <div class="page-title">Network Validation</div>
-    <div class="header-right">
-      <button
-        matButton="outlined"
-        matTooltip="Validation Reference"
-        (click)="showReference.emit()"
-        class="reference-btn"
+<app-page-shell
+  title="Run validation"
+  subtitle="Validate one site — or your entire organization."
+  activeRoute="site_selector"
+  [userLabel]="authInfo().user_email || authInfo().token_name || 'API Token'"
+  (navigate)="onShellNavigate($event)"
+>
+  @if (authInfo().orgs.length > 1) {
+    <div class="org-bar">
+      <span class="ob-label">Organization</span>
+      <input
+        class="mv-input mv-select ob-picker"
+        type="text"
+        [matAutocomplete]="orgAuto"
+        [formControl]="orgSearchCtrl"
+        placeholder="Search organizations…"
+      />
+      <mat-autocomplete
+        #orgAuto="matAutocomplete"
+        [displayWith]="displayOrg"
+        (optionSelected)="onOrgSelected($event.option.value)"
       >
-        <mat-icon>help_outline</mat-icon>
-        Validation Reference
-      </button>
-      <div class="user-info">
-        <mat-icon style="font-size:18px;width:18px;height:18px;">person</mat-icon>
-        {{ authInfo().user_email || authInfo().token_name || 'API Token' }}
+        @for (org of filteredOrgs(); track org.id) {
+          <mat-option [value]="org">{{ org.name }}</mat-option>
+        }
+      </mat-autocomplete>
+    </div>
+  }
+
+  <!-- Org header + mode tabs card -->
+  <div class="mv-card org-card">
+    <div class="org-header">
+      <div class="org-icon">
+        <mat-icon>corporate_fare</mat-icon>
+      </div>
+      <div class="org-info">
+        <div class="org-name">{{ currentOrg()?.name || 'No organization selected' }}</div>
+        <div class="org-meta">
+          <span>{{ allSites().length }} site{{ allSites().length === 1 ? '' : 's' }}</span>
+          @if (currentOrg()?.role) {
+            <span>·</span>
+            <span class="role-pill">{{ currentOrg()!.role }}</span>
+          }
+        </div>
       </div>
     </div>
-  </div>
 
-  <div class="cards-row">
-    <!-- New Report card -->
-    <mat-card>
-      <mat-card-title>New Report</mat-card-title>
-
-      <!-- Scope toggle -->
-      <div class="section-label">Scope</div>
-      <mat-button-toggle-group
-        [value]="scope()"
-        (change)="onScopeChange($event.value)"
-        class="scope-toggle"
+    <!-- Mode tabs -->
+    <div class="mode-tabs">
+      <button
+        type="button"
+        class="mode-tab"
+        [class.active]="scope() === 'site'"
+        (click)="onScopeChange('site')"
       >
-        <mat-button-toggle value="site">Site</mat-button-toggle>
-        <mat-button-toggle value="org">Organization</mat-button-toggle>
-      </mat-button-toggle-group>
+        <div class="mode-tab-icon">
+          <mat-icon>location_on</mat-icon>
+        </div>
+        <div class="mode-tab-text">
+          <div class="mode-tab-title">Specific site</div>
+          <div class="mode-tab-sub">Pick a single site · all checks available</div>
+        </div>
+      </button>
+      <button
+        type="button"
+        class="mode-tab"
+        [class.active]="scope() === 'org'"
+        (click)="onScopeChange('org')"
+      >
+        <div class="mode-tab-icon">
+          <mat-icon>business</mat-icon>
+        </div>
+        <div class="mode-tab-text">
+          <div class="mode-tab-title">Organization-wide</div>
+          <div class="mode-tab-sub">
+            All sites · subset of checks · capped at 5,000 calls
+          </div>
+        </div>
+      </button>
+    </div>
 
-      <!-- Org picker (only if multi-org) -->
-      @if (authInfo().orgs.length > 1) {
-        <div class="section-label">Organization</div>
-        <mat-form-field class="full-width" appearance="outline">
-          <mat-label>Select organization</mat-label>
-          <input
-            matInput
-            [matAutocomplete]="orgAuto"
-            [formControl]="orgSearchCtrl"
-            placeholder="Type to filter..."
-          />
-          <mat-autocomplete
-            #orgAuto="matAutocomplete"
-            [displayWith]="displayOrg"
-            (optionSelected)="onOrgSelected($event.option.value)"
-          >
-            @for (org of filteredOrgs(); track org.id) {
-              <mat-option [value]="org">{{ org.name }}</mat-option>
-            }
-          </mat-autocomplete>
-        </mat-form-field>
-      }
+    @if (scope() === 'site') {
+      <!-- Sites search bar -->
+      <div class="sites-search">
+        <mat-icon class="search-icon">search</mat-icon>
+        <input
+          class="mv-input"
+          type="text"
+          [formControl]="siteSearchCtrl"
+          placeholder="Search sites by name…"
+        />
+      </div>
 
-      <!-- Site picker (only for site scope) -->
-      @if (scope() === 'site') {
-        <div class="section-label">Site</div>
-        <mat-form-field class="full-width" appearance="outline">
-          <mat-label>Select site</mat-label>
-          <input
-            matInput
-            [matAutocomplete]="siteAuto"
-            [formControl]="siteSearchCtrl"
-            placeholder="Type to filter..."
-          />
-          <mat-autocomplete
-            #siteAuto="matAutocomplete"
-            [displayWith]="displaySite"
-            (optionSelected)="selectedSite.set($event.option.value)"
-          >
-            @for (site of filteredSites(); track site.id) {
-              <mat-option [value]="site">{{ site.name }}</mat-option>
-            }
-          </mat-autocomplete>
+      <!-- Sites table -->
+      <div class="sites-table">
+        <div class="sites-thead">
+          <div></div>
+          <div>Site</div>
+          <div class="th-right">Report</div>
+        </div>
+        <div class="sites-tbody">
           @if (sitesLoading()) {
-            <mat-spinner matSuffix diameter="18"></mat-spinner>
-          }
-        </mat-form-field>
-
-        <!-- Cable tests (site scope only) -->
-        <mat-checkbox
-          [formControl]="cableTestsCtrl"
-          [matTooltip]="cableTestsDisabledReason()"
-        >
-          Include cable tests
-        </mat-checkbox>
-        @if (selectedSite() && !canWriteOrg()) {
-          <div class="cable-info">
-            <mat-icon style="font-size:14px;width:24px;height:14px;">info</mat-icon>
-            {{ cableTestsDisabledReason() }}
-          </div>
-        } @else if (selectedSite() && !cableTestsAllowed()) {
-          <div class="cable-info">
-            <mat-icon style="font-size:14px;width:24px;height:14px;">info</mat-icon>
-            {{ cableTestsDisabledReason() }}
-          </div>
-        }
-        @if (selectedSite() && cableTestsCtrl.value) {
-          <div class="cable-warn">
-            <mat-icon style="font-size:14px;width:24px;height:14px;">warning</mat-icon>
-            Cable tests can take several minutes on large deployments.
-          </div>
-        }
-      }
-
-      <!-- Org scope budget info -->
-      @if (scope() === 'org') {
-        @if (budgetLoading()) {
-          <div class="cable-info" style="margin-top:12px;">
-            <mat-spinner diameter="16" style="display:inline-block;margin-right:8px;"></mat-spinner>
-            Checking API budget...
-          </div>
-        } @else if (orgBudget()) {
-          @if (orgBudget()!.allowed) {
-            <div class="cable-info" style="margin-top:12px;">
-              <mat-icon style="font-size:14px;width:24px;height:14px;">info</mat-icon>
-              {{ orgBudget()!.site_count }} sites, {{ orgBudget()!.device_counts.ap + orgBudget()!.device_counts.switch + orgBudget()!.device_counts.gateway }} devices.
-              Est. {{ orgBudget()!.estimated }} / {{ orgBudget()!.available }} API calls available.
+            <div class="state-loading">
+              <mat-spinner diameter="22"></mat-spinner>
+            </div>
+          } @else if (filteredSites().length === 0) {
+            <div class="state-empty">
+              @if (siteSearchCtrl.value) {
+                No sites match "{{ siteSearchCtrl.value }}".
+              } @else {
+                No sites in this organization.
+              }
             </div>
           } @else {
-            <div class="error-msg" style="margin-top:12px;">
-              {{ orgBudget()!.reason }}
+            @for (site of filteredSites(); track site.id) {
+              <button
+                type="button"
+                class="site-row"
+                [class.selected]="selectedSite()?.id === site.id"
+                (click)="selectSite(site)"
+              >
+                <div class="site-radio">
+                  <span class="radio-dot" [class.on]="selectedSite()?.id === site.id"></span>
+                </div>
+                <div class="site-info">
+                  <div class="site-name">{{ site.name }}</div>
+                  <div class="site-id">{{ site.id }}</div>
+                </div>
+                <div class="site-report">
+                  @if (reportStatusBySite().get(site.id); as status) {
+                    <app-status-badge [status]="status" size="sm" />
+                  } @else {
+                    <span class="muted-dash">—</span>
+                  }
+                </div>
+              </button>
+            }
+          }
+        </div>
+      </div>
+    }
+
+    @if (scope() === 'org') {
+      <div class="org-stats-grid">
+        <div class="org-stat">
+          <div class="stat-label">Sites covered</div>
+          <div class="stat-value">{{ budget()?.site_count ?? '—' }}</div>
+          <div class="stat-sub">across the organization</div>
+        </div>
+        <div class="org-stat">
+          <div class="stat-label">Total devices</div>
+          <div class="stat-value">{{ totalDevices() }}</div>
+          <div class="stat-sub">APs, switches, gateways</div>
+        </div>
+        <div class="org-stat">
+          <div class="stat-label">API calls</div>
+          <div class="stat-value">
+            {{ budget()?.estimated ?? '—' }}<span class="stat-of"
+              >&nbsp;/&nbsp;{{ budget()?.available ?? '—' }}</span
+            >
+          </div>
+          <div class="stat-sub">{{ budgetPct() }}% of limit</div>
+        </div>
+        <div class="org-stat">
+          <div class="stat-label">Status</div>
+          <div class="stat-value status-mini">
+            @if (budgetLoading()) {
+              <mat-spinner diameter="20"></mat-spinner>
+            } @else if (budget()?.allowed) {
+              <app-status-badge status="info" label="Within limit" size="sm" />
+            } @else if (budget()) {
+              <app-status-badge status="fail" label="Over limit" size="sm" />
+            } @else {
+              <span class="muted-dash">—</span>
+            }
+          </div>
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- Validation scope + budget grid -->
+  <div
+    class="scope-grid"
+    [class.with-budget]="scope() === 'org' || (scope() === 'site' && !!selectedSite())"
+  >
+    <div class="mv-card scope-card">
+      <div class="mv-card-head">
+        <div>
+          <h3 class="mv-card-title">Validation scope</h3>
+          <p class="mv-card-sub">
+            @if (scope() === 'site') {
+              @if (selectedSite()) {
+                {{ selectedSite()!.name }}@if (budget()) {
+                  · {{ totalDevices() }} devices
+                }
+              } @else {
+                Pick a site to start
+              }
+            } @else {
+              All {{ budget()?.site_count ?? '—' }} sites · {{ totalDevices() }} devices
+            }
+          </p>
+        </div>
+        <app-status-badge
+          [status]="canGenerate() ? 'info' : 'neutral'"
+          [label]="canGenerate() ? 'Ready to run' : 'Not ready'"
+          size="sm"
+        />
+      </div>
+
+      <div class="scope-body">
+        <!-- Required checks (info-only) -->
+        <div class="check-group">
+          <div class="cg-head">
+            <div class="cg-text">
+              <div class="cg-title">
+                Required checks
+                <span class="cg-badge required">REQUIRED</span>
+              </div>
+              <div class="cg-hint">Always run · pulled from inventory · zero extra API cost</div>
+            </div>
+          </div>
+          <div class="cg-info">
+            Site variables, device events, naming, firmware, connection &amp; config, AP eth0 /
+            power / LLDP, switch &amp; gateway optics, gateway WAN / LAN ports, virtual chassis, HA
+            cluster.
+            <a class="cg-link" (click)="navigate.emit('validation_reference')">See full reference</a>
+          </div>
+        </div>
+
+        <!-- Optional: Cable tests -->
+        <div
+          class="check-group highlight"
+          [class.unavailable]="scope() === 'org'"
+        >
+          <div class="cg-head">
+            <div class="cg-text">
+              <div class="cg-title">
+                Cable diagnostics (TDR)
+                <span class="cg-badge heavy">HEAVY</span>
+              </div>
+              <div class="cg-hint">
+                Time-domain reflectometry on copper switch ports · per-site only
+              </div>
+            </div>
+            @if (scope() === 'org') {
+              <span class="cg-na">NOT IN ORG-WIDE</span>
+            }
+          </div>
+          @if (scope() === 'site') {
+            <div class="cg-row">
+              <mat-checkbox
+                [formControl]="cableTestsCtrl"
+                [matTooltip]="cableTestsDisabledReason()"
+              >
+                <span class="opt-label">Run cable tests on switch ports</span>
+                <span class="opt-hint"
+                  >Requires write access · site must be in the TDR site group</span
+                >
+              </mat-checkbox>
+              @if (selectedSite() && cableTestsDisabledReason()) {
+                <div class="info-block">
+                  <mat-icon>info</mat-icon>
+                  <span>{{ cableTestsDisabledReason() }}</span>
+                </div>
+              } @else if (selectedSite() && cableTestsCtrl.value) {
+                <div class="warn-block">
+                  <mat-icon>warning</mat-icon>
+                  <span>Cable tests can take several minutes on large deployments.</span>
+                </div>
+              }
             </div>
           }
-        }
-      }
+        </div>
 
-      <!-- Config command errors -->
-      <mat-checkbox [formControl]="configErrorsCtrl">
-        Include config command errors
-      </mat-checkbox>
-      @if (scope() === 'org' && orgBudget() && !orgBudget()!.config_errors_allowed) {
-        <div class="cable-info">
-          <mat-icon style="font-size:14px;width:24px;height:14px;">info</mat-icon>
-          {{ orgBudget()!.config_errors_reason }}
+        <!-- Optional: Config errors -->
+        <div class="check-group highlight">
+          <div class="cg-head">
+            <div class="cg-text">
+              <div class="cg-title">Config command errors</div>
+              <div class="cg-hint">
+                EX/QFX switches and SRX gateways · 1 API call per device
+              </div>
+            </div>
+          </div>
+          <div class="cg-row">
+            <mat-checkbox [formControl]="configErrorsCtrl">
+              <span class="opt-label">Include config command errors</span>
+              <span class="opt-hint"
+                >Detects configuration excluded by Mist due to errors</span
+              >
+            </mat-checkbox>
+            @if (
+              scope() === 'org' && budget() && !budget()!.config_errors_allowed
+            ) {
+              <div class="info-block">
+                <mat-icon>info</mat-icon>
+                <span>{{ budget()!.config_errors_reason }}</span>
+              </div>
+            }
+          </div>
         </div>
-      }
-      @if (configErrorsCtrl.value) {
-        <div class="cable-warn">
-          <mat-icon style="font-size:14px;width:24px;height:14px;">warning</mat-icon>
-          Config command errors require one API call per switch and gateway.
-        </div>
-      }
+      </div>
 
       @if (startError()) {
-        <div class="error-msg">{{ startError() }}</div>
+        <div class="scope-error">{{ startError() }}</div>
       }
 
-      <button
-        matButton="filled"
-        color="primary"
-        class="full-width generate-btn"
-        [disabled]="!canGenerate() || generating()"
-        (click)="generateReport()"
-      >
-        @if (generating()) {
-          <mat-spinner diameter="18" style="display:inline-block;margin-right:8px;"></mat-spinner>
-        }
-        Generate {{ scope() === 'org' ? 'Org' : '' }} Report
-      </button>
-    </mat-card>
-
-    <!-- Recent Reports card -->
-    <mat-card>
-      <mat-card-title>
-        <div style="display:flex;align-items:center;justify-content:space-between;">
-          <span>Recent Reports (last 24h)</span>
-          <button mat-icon-button (click)="loadRecentReports()" matTooltip="Refresh">
-            <mat-icon>refresh</mat-icon>
-          </button>
-        </div>
-      </mat-card-title>
-
-      @if (reportsLoading()) {
-        <div style="display:flex;justify-content:center;padding:32px 0;">
-          <mat-spinner diameter="32"></mat-spinner>
-        </div>
-      } @else if (recentReports().length === 0) {
-        <div class="no-reports">
-          <mat-icon style="font-size:40px;width:40px;height:40px;margin-bottom:8px;">
-            assignment
-          </mat-icon>
-          <div>No reports in the last 24 hours.</div>
-        </div>
-      } @else {
-        <div class="table-scroll">
-          <table mat-table [dataSource]="recentReports()" style="width:100%;">
-            <ng-container matColumnDef="org_name">
-              <th mat-header-cell *matHeaderCellDef>Organization</th>
-              <td mat-cell *matCellDef="let row" class="truncate-cell" [matTooltip]="row.org_name">{{ row.org_name }}</td>
-            </ng-container>
-
-            <ng-container matColumnDef="site_name">
-              <th mat-header-cell *matHeaderCellDef>Site</th>
-              <td mat-cell *matCellDef="let row" class="truncate-cell" [matTooltip]="row.site_name">{{ row.site_name }}</td>
-            </ng-container>
-
-            <ng-container matColumnDef="scope">
-              <th mat-header-cell *matHeaderCellDef>Scope</th>
-              <td mat-cell *matCellDef="let row">
-                <mat-icon style="font-size:16px;width:16px;height:16px;" [matTooltip]="row.scope === 'org' ? 'Organization report' : 'Site report'">
-                  {{ row.scope === 'org' ? 'business' : 'location_on' }}
-                </mat-icon>
-              </td>
-            </ng-container>
-
-            <ng-container matColumnDef="status">
-              <th mat-header-cell *matHeaderCellDef>Status</th>
-              <td mat-cell *matCellDef="let row">
-                <app-status-badge [status]="row.status" />
-              </td>
-            </ng-container>
-
-            <ng-container matColumnDef="created_at">
-              <th mat-header-cell *matHeaderCellDef>Created</th>
-              <td mat-cell *matCellDef="let row">
-                {{ row.created_at | date: 'MMM d, HH:mm' }}
-              </td>
-            </ng-container>
-
-            <ng-container matColumnDef="action">
-              <th mat-header-cell *matHeaderCellDef></th>
-              <td mat-cell *matCellDef="let row" class="action-cell">
-                <div style="display: flex;">
-                <button
-        matButton="tonal"
-                  color="primary"
-                  class="view-link"
-                  (click)="viewReport(row)"
-                  style="margin-right: 8px;"
-                >
-                  View
-                </button>
-                <button
-                  matIconButton
-                  matTooltip="Delete report"
-                  (click)="deleteReport(row)"
-                  class="delete-btn"
-                >
-                  <mat-icon>delete</mat-icon>
-                </button>
-                </div>
-              </td>
-            </ng-container>
-
-            <tr mat-header-row *matHeaderRowDef="reportColumns"></tr>
-            <tr mat-row *matRowDef="let row; columns: reportColumns;"></tr>
-          </table>
-        </div>
-      }
-      <div class="auto-delete-notice">
-        Reports are automatically deleted after 24 hours.
+      <div class="scope-foot">
+        <span class="foot-note">
+          <mat-icon>info</mat-icon>
+          Reports auto-purge after 24 h.
+        </span>
+        <button
+          matButton="filled"
+          color="primary"
+          [disabled]="!canGenerate() || generating()"
+          (click)="generateReport()"
+        >
+          @if (generating()) {
+            <mat-spinner diameter="16"></mat-spinner>
+          } @else {
+            <mat-icon>play_arrow</mat-icon>
+          }
+          {{ scope() === 'org' ? 'Run org-wide validation' : 'Run validation' }}
+        </button>
       </div>
-    </mat-card>
+    </div>
+
+    @if (scope() === 'org' || (scope() === 'site' && !!selectedSite())) {
+      <div class="mv-card budget-card">
+        <div class="mv-card-head">
+          <div>
+            <h3 class="mv-card-title">API call budget</h3>
+            <p class="mv-card-sub">
+              {{
+                scope() === 'org'
+                  ? 'Mist Cloud rate-limited at 5,000 / report'
+                  : 'Estimate for this site report'
+              }}
+            </p>
+          </div>
+          <mat-icon class="budget-icon">analytics</mat-icon>
+        </div>
+
+        <div class="budget-body">
+          @if (budgetLoading()) {
+            <div class="state-loading inline">
+              <mat-spinner diameter="22"></mat-spinner>
+              <span>Checking budget…</span>
+            </div>
+          } @else if (budget(); as b) {
+            <div class="budget-figures" [class.over]="!b.allowed">
+              <span class="budget-num">{{ b.estimated.toLocaleString() }}</span>
+              <span class="budget-of">/ {{ b.available.toLocaleString() }}</span>
+            </div>
+            <div class="budget-bar">
+              <div
+                class="budget-fill"
+                [class.over]="!b.allowed"
+                [style.width.%]="budgetPct()"
+              ></div>
+            </div>
+            <div class="budget-meta">
+              <span>{{ budgetPct() }}% of limit</span>
+              <span class="budget-meta-strong" [class.bad]="!b.allowed">
+                @if (b.allowed) {
+                  {{ (b.available - b.estimated).toLocaleString() }} headroom
+                } @else {
+                  Over by {{ (b.estimated - b.available).toLocaleString() }}
+                }
+              </span>
+            </div>
+
+            @if (!b.allowed) {
+              <div class="over-limit-block">
+                <mat-icon>error_outline</mat-icon>
+                <div>
+                  <div class="ovl-title">Cannot generate report</div>
+                  <div class="ovl-msg">{{ b.reason }}</div>
+                </div>
+              </div>
+            }
+          } @else {
+            <div class="state-empty">Pick org-wide mode to see the budget.</div>
+          }
+        </div>
+      </div>
+    }
   </div>
-</div>
+</app-page-shell>

@@ -1,17 +1,15 @@
 @use '@angular/material' as mat;
 
-// M3 requires system palettes - using closest matches to Mist brand colors
-// Primary: Azure (closest to Mist blue #015c95)
-// Tertiary: Green (closest to Mist green #86c410)
+// ── Material 3 theme bridge — maps onto our CSS tokens via overrides below ──
 $theme: mat.define-theme((
   color: (
     theme-type: light,
-    primary: mat.$azure-palette,
-    tertiary: mat.$chartreuse-palette,
+    primary: mat.$violet-palette,
+    tertiary: mat.$cyan-palette,
   ),
   typography: (
-    brand-family: 'Roboto, "Helvetica Neue", sans-serif',
-    plain-family: 'Roboto, "Helvetica Neue", sans-serif',
+    brand-family: '"Inter Tight", system-ui, -apple-system, sans-serif',
+    plain-family: '"Inter Tight", system-ui, -apple-system, sans-serif',
   ),
 ));
 
@@ -19,144 +17,401 @@ html {
   @include mat.all-component-themes($theme);
 }
 
-// ── Color tokens (Mist brand palette) ──
+// ── Design tokens (single source of truth, no hardcoded colors elsewhere) ──
 :root {
-  --bg-base: #ececec;
-  --bg-surface: #ffffff;
-  --bg-elevated: #f5f5f5;
-  --border-default: #e0e0e0;
-  --border-muted: #eeeeee;
-  --text-primary: #444444;
-  --text-secondary: #6a6a6a;
-  --text-tertiary: #999999;
-  --accent: #015c95;
-  --accent-muted: rgba(1, 92, 149, 0.08);
-  --accent-hover: rgba(1, 92, 149, 0.04);
-  --accent-focus: rgba(1, 92, 149, 0.12);
-  --accent-disabled: #525f673d;
+  // Surfaces & ink
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f3f4f7;
+  --ink: #111827;
+  --ink-soft: #374151;
+  --muted: #9ca3af;
+  --muted-strong: #6b7280;
 
-  --status-pass: #4a8d00;
-  --status-pass-bg: #f1f8e5;
-  --status-pass-container: #ddedbf;
-  --status-fail: #960d0d;
-  --status-fail-bg: #f9e7e9;
-  --status-fail-container: #f0c3c5;
-  --status-warn: #d97706;
-  --status-warn-bg: #fff8e1;
-  --status-warn-container: #ffe0b2;
-  --status-info: #015c95;
-  --status-info-bg: #e2f6fc;
-  --status-info-container: #b4e7f8;
+  // Borders
+  --border: #e5e7eb;
+  --border-soft: #eef0f3;
+  --border-strong: #d1d5db;
 
-  --font-mono: 'Roboto Mono', monospace;
+  // Brand (indigo)
+  --accent: #4f46e5;
+  --accent-strong: #4338ca;
+  --accent-soft: #eef2ff;
+  --accent-fg: #ffffff;
 
-  // Button overrides
-  --mat-button-filled-container-color: var(--accent);
-  --mat-button-filled-hover-container-color: var(--accent-hover);
-  --mat-button-filled-focus-container-color: var(--accent-focus);
-  --mat-button-filled-disabled-container-color: var(--accent-disabled);
+  // Status — each has soft/strong pair
+  --success: #10b981;
+  --success-strong: #047857;
+  --success-soft: #ecfdf5;
+  --warn: #f59e0b;
+  --warn-strong: #b45309;
+  --warn-soft: #fffbeb;
+  --danger: #ef4444;
+  --danger-strong: #b91c1c;
+  --danger-soft: #fef2f2;
+  --info: #0ea5e9;
+  --info-strong: #0369a1;
+  --info-soft: #f0f9ff;
 
+  // Type
+  --font-sans: 'Inter Tight', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  // Radii
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+
+  // Shadows
+  --shadow-1: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-2: 0 4px 12px -2px rgba(15, 23, 42, 0.06), 0 2px 4px -2px rgba(15, 23, 42, 0.04);
+  --shadow-3: 0 8px 32px -12px rgba(15, 23, 42, 0.12);
+
+  // ── Material overrides — bind Material's system tokens to our palette ──
+  --mat-sys-primary: var(--accent);
+  --mat-sys-on-primary: var(--accent-fg);
+  --mat-sys-primary-container: var(--accent-soft);
+  --mat-sys-on-primary-container: var(--accent-strong);
+  --mat-sys-surface: var(--surface);
+  --mat-sys-surface-container: var(--surface);
+  --mat-sys-surface-container-low: var(--surface);
+  --mat-sys-surface-container-high: var(--surface-2);
+  --mat-sys-on-surface: var(--ink);
+  --mat-sys-on-surface-variant: var(--muted-strong);
+  --mat-sys-outline: var(--border-strong);
+  --mat-sys-outline-variant: var(--border);
+  --mat-sys-error: var(--danger);
+  --mat-sys-on-error: var(--accent-fg);
+  --mat-sys-error-container: var(--danger-soft);
+  --mat-sys-on-error-container: var(--danger-strong);
+
+  // Aliases — legacy token names map to the same palette so older component SCSS continues to work.
+  --text-primary: var(--ink);
+  --text-secondary: var(--muted-strong);
+  --text-tertiary: var(--muted);
+  --bg-base: var(--bg);
+  --bg-surface: var(--surface);
+  --bg-elevated: var(--surface-2);
+  --border-default: var(--border);
+  --border-muted: var(--border-soft);
+  --status-pass: var(--success);
+  --status-fail: var(--danger);
+  --status-warn: var(--warn);
+  --status-info: var(--info);
+  --status-pass-bg: var(--success-soft);
+  --status-fail-bg: var(--danger-soft);
+  --status-warn-bg: var(--warn-soft);
+  --status-info-bg: var(--info-soft);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
 }
 
 body {
-  margin: 0;
-  font-family: Roboto, 'Helvetica Neue', sans-serif;
-  background-color: var(--bg-base);
-  color: var(--text-primary);
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'ss01', 'cv11';
 }
 
-// Status badge colors are now in status-badge.component.scss (plain <span>, no mat-chip)
+// ── Typography utilities ──
+.t-display  { font-size: 32px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.1; }
+.t-h1       { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; }
+.t-h2       { font-size: 18px; font-weight: 600; letter-spacing: -0.015em; }
+.t-h3       { font-size: 15px; font-weight: 600; }
+.t-body     { font-size: 14px; }
+.t-small    { font-size: 13px; color: var(--ink-soft); }
+.t-eyebrow  { font-size: 11.5px; font-weight: 600; color: var(--muted-strong);
+              text-transform: uppercase; letter-spacing: 0.06em; }
+.mono, .t-mono { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0; }
 
-// ── Inline status text colors ──
-.status-pass {
-  color: var(--status-pass);
+// ── Inline status text ──
+.status-pass { color: var(--success-strong); }
+.status-fail { color: var(--danger-strong); }
+.status-warn { color: var(--warn-strong); }
+.status-info { color: var(--info-strong); }
+
+// ── Card primitive (used widely in lieu of <mat-card> for tighter design control) ──
+.mv-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.mv-card--padded { padding: 20px; }
+.mv-card-head {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.mv-card-title { font-size: 14px; font-weight: 600; color: var(--ink); margin: 0; }
+.mv-card-sub { font-size: 12px; color: var(--muted-strong); margin: 2px 0 0; }
+
+// ── Field wrapper (label + input + hint/error) ──
+.mv-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+.mv-field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.mv-field-hint {
+  font-size: 11.5px;
+  color: var(--muted-strong);
+}
+.mv-field-error {
+  font-size: 11.5px;
+  color: var(--danger-strong);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
-.status-fail {
-  color: var(--status-fail);
+// ── Native input/select look (for use outside Material form-fields) ──
+.mv-input {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font: inherit;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 120ms, box-shadow 120ms;
+}
+.mv-input:hover:not([disabled]) { border-color: var(--border-strong); }
+.mv-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.mv-input[disabled] { background: var(--surface-2); color: var(--muted-strong); cursor: not-allowed; }
+.mv-input-mono {
+  font-family: var(--font-mono);
 }
 
-.status-warn {
-  color: var(--status-warn);
+.mv-select,
+select.mv-input {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 20 20' fill='none'><path d='M5 8l5 5 5-5' stroke='%236b7280' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 11px center;
+  padding-right: 32px;
+  cursor: pointer;
 }
 
-.status-info {
-  color: var(--status-info);
+// ── Page shell layout (sidebar + content) ──
+.mv-shell {
+  display: flex;
+  min-height: 100vh;
+  background: var(--bg);
+}
+.mv-shell-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.mv-page-header {
+  padding: 20px 32px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+.mv-page-header-text { min-width: 0; flex: 1; }
+.mv-breadcrumb {
+  font-size: 12px;
+  color: var(--muted-strong);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  .crumb-current { color: var(--ink); font-weight: 500; }
+  mat-icon { font-size: 14px; width: 14px; height: 14px; color: var(--muted); }
+}
+.mv-page-title {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0;
+  color: var(--ink);
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.mv-page-title-suffix {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted-strong);
+  letter-spacing: 0;
+}
+.mv-page-sub {
+  font-size: 13px;
+  color: var(--muted-strong);
+  margin: 4px 0 0;
+}
+.mv-page-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
-// ── Global Material overrides ──
+[shell-actions] {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.mv-page-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 32px 48px;
+}
+
+// ── Material button radius — override M3 pill default to match design (8px) ──
+:root {
+  --mdc-filled-button-container-shape: var(--radius-md);
+  --mdc-outlined-button-container-shape: var(--radius-md);
+  --mdc-text-button-container-shape: var(--radius-md);
+  --mdc-protected-button-container-shape: var(--radius-md);
+  --mat-filled-button-container-shape: var(--radius-md);
+  --mat-outlined-button-container-shape: var(--radius-md);
+  --mat-text-button-container-shape: var(--radius-md);
+  --mat-protected-button-container-shape: var(--radius-md);
+}
+.mat-mdc-button-base,
+.mat-mdc-button,
+.mat-mdc-unelevated-button,
+.mat-mdc-outlined-button,
+.mat-mdc-raised-button {
+  border-radius: var(--radius-md) !important;
+}
+.mat-mdc-icon-button.mat-mdc-button-base {
+  --mdc-icon-button-state-layer-shape: var(--radius-md);
+  border-radius: var(--radius-md) !important;
+}
+
+// ── Slide toggle — match design's off-track (light gray) and on-track (accent) ──
+.mat-mdc-slide-toggle {
+  --mdc-switch-unselected-track-color: var(--border-strong);
+  --mdc-switch-unselected-hover-track-color: var(--muted);
+  --mdc-switch-unselected-focus-track-color: var(--border-strong);
+  --mdc-switch-unselected-pressed-track-color: var(--muted);
+  --mdc-switch-unselected-handle-color: #ffffff;
+  --mdc-switch-unselected-hover-handle-color: #ffffff;
+  --mdc-switch-unselected-focus-handle-color: #ffffff;
+  --mdc-switch-unselected-pressed-handle-color: #ffffff;
+  --mdc-switch-unselected-icon-color: transparent;
+
+  --mdc-switch-selected-track-color: var(--accent);
+  --mdc-switch-selected-hover-track-color: var(--accent-strong);
+  --mdc-switch-selected-focus-track-color: var(--accent);
+  --mdc-switch-selected-pressed-track-color: var(--accent-strong);
+  --mdc-switch-selected-handle-color: var(--accent-fg);
+  --mdc-switch-selected-hover-handle-color: var(--accent-fg);
+  --mdc-switch-selected-focus-handle-color: var(--accent-fg);
+  --mdc-switch-selected-pressed-handle-color: var(--accent-fg);
+  --mdc-switch-selected-icon-color: transparent;
+}
+
+// ── Material component tweaks (bind to tokens, no per-component re-skin) ──
 .mat-mdc-card {
-  --mdc-elevated-card-container-color: #ffffff !important;
-  background-color: #ffffff !important;
-  border: 1px solid var(--border-default);
-  border-radius: 5px !important;
+  background-color: var(--surface) !important;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg) !important;
   box-shadow: none !important;
 }
 
 .mat-expansion-panel {
-  background-color: #ffffff !important;
-  border: 1px solid var(--border-default);
-  border-radius: 5px !important;
+  background-color: var(--surface) !important;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg) !important;
   box-shadow: none !important;
 }
 
-// Force surface color on Material filled containers
 .mat-mdc-dialog-container,
 .mdc-dialog__surface {
-  background-color: #ffffff !important;
+  background-color: var(--surface) !important;
+  border-radius: var(--radius-lg) !important;
+}
+
+// ── Side drawer (used via panelClass: 'mv-side-drawer') ──
+.cdk-overlay-pane.mv-side-drawer {
+  position: fixed !important;
+  top: 0 !important;
+  right: 0 !important;
+  margin: 0 !important;
+  height: 100vh !important;
+
+  .mat-mdc-dialog-container,
+  .mdc-dialog__surface {
+    border-radius: 0 !important;
+    box-shadow: -12px 0 40px rgba(15, 23, 42, 0.18);
+    height: 100vh;
+    background: var(--bg) !important;
+  }
+
+  .mat-mdc-dialog-surface {
+    padding: 0 !important;
+  }
 }
 
 .mat-mdc-table {
-  --mat-table-background-color: var(--bg-surface);
-  --mat-table-header-headline-color: var(--text-secondary);
-  --mat-table-row-item-label-text-color: var(--text-primary);
+  --mat-table-background-color: var(--surface);
+  --mat-table-header-headline-color: var(--muted-strong);
+  --mat-table-row-item-label-text-color: var(--ink);
+  background-color: var(--surface);
 }
 
-.mat-mdc-header-row {
-  border-bottom-color: var(--border-default) !important;
+.mat-mdc-header-row { border-bottom-color: var(--border) !important; }
+.mat-mdc-row { border-bottom-color: var(--border-soft) !important; }
+.mat-mdc-header-cell {
+  font-size: 11.5px;
+  font-weight: 600 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted-strong) !important;
+  background: var(--surface-2);
 }
+.mat-mdc-cell { color: var(--ink); }
 
-.mat-mdc-row {
-  border-bottom-color: var(--border-muted) !important;
-}
+// Row-level status accent — kept as a lightweight visual cue
+tr.row-fail { border-left: 3px solid var(--danger); }
+tr.row-warn { border-left: 3px solid var(--warn); }
+tr.row-pass { border-left: 3px solid transparent; }
 
-// ── Row-level status tinting ──
-tr.row-fail {
-  border-left: 3px solid var(--status-fail);
-}
-
-tr.row-warn {
-  border-left: 3px solid var(--status-warn);
-}
-
-tr.row-pass {
-  border-left: 3px solid transparent;
-}
-
-// ── Monospace utility ──
-.mono {
-  font-family: var(--font-mono);
-  font-size: 13px;
-  letter-spacing: -0.02em;
-}
-
-// ── Scrollbar styling ──
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--bg-base);
-}
-
+// ── Scrollbars ──
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: var(--border-default);
-  border-radius: 4px;
+  background: var(--border-strong);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-tertiary);
+  background: var(--muted);
+  border: 2px solid transparent;
+  background-clip: content-box;
 }

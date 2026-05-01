@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 
 from fastapi import APIRouter, Cookie, HTTPException, Request
@@ -19,16 +20,13 @@ _LOGIN_RATE_MAX = 10  # max attempts per window
 def _check_login_rate_limit(client_ip: str) -> None:
     """Raise 429 if the client IP exceeds the login rate limit."""
     now = time.monotonic()
-    timestamps = _LOGIN_RATE_LIMIT.get(client_ip, [])
-    # Prune old entries
-    timestamps = [t for t in timestamps if now - t < _LOGIN_RATE_WINDOW]
+    timestamps = [
+        t for t in _LOGIN_RATE_LIMIT.get(client_ip, []) if now - t < _LOGIN_RATE_WINDOW
+    ]
     if len(timestamps) >= _LOGIN_RATE_MAX:
         raise HTTPException(status_code=429, detail="Too many login attempts. Try again later.")
     timestamps.append(now)
-    if timestamps:
-        _LOGIN_RATE_LIMIT[client_ip] = timestamps
-    else:
-        _LOGIN_RATE_LIMIT.pop(client_ip, None)
+    _LOGIN_RATE_LIMIT[client_ip] = timestamps
 
 router = APIRouter()
 
@@ -48,6 +46,22 @@ class LoginRequest(BaseModel):
 @router.get("/clouds")
 async def list_clouds():
     return get_cloud_list()
+
+
+@router.get("/config")
+async def get_app_config():
+    """Public frontend configuration. Returns optional URLs configured via env vars.
+
+    Empty values are omitted so the client can hide buttons cleanly.
+    """
+    config: dict[str, str] = {}
+    github = os.environ.get("GITHUB_URL", "").strip()
+    docker = os.environ.get("DOCKER_URL", "").strip()
+    if github:
+        config["github_url"] = github
+    if docker:
+        config["docker_url"] = docker
+    return config
 
 
 def _is_secure_request(request: Request) -> bool:

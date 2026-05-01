@@ -1,0 +1,61 @@
+.mv-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+
+  &:focus-visible {
+    outline: none;
+    .mv-toggle-track {
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+    }
+  }
+
+  &.is-disabled,
+  &[disabled] {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+}
+
+.mv-toggle-track {
+  width: 36px;
+  height: 20px;
+  border-radius: var(--radius-pill);
+  background: var(--border-strong);
+  position: relative;
+  transition: background 160ms;
+  flex-shrink: 0;
+}
+
+.mv-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-pill);
+  background: #ffffff;
+  transition: left 160ms;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.mv-toggle.is-checked .mv-toggle-track {
+  background: var(--accent);
+}
+
+.mv-toggle.is-checked .mv-toggle-thumb {
+  left: 18px;
+}
+
+.mv-toggle-label:empty {
+  display: none;
+}
