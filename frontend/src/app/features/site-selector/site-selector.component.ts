@@ -215,8 +215,10 @@ export class SiteSelectorComponent implements OnInit {
 
   budgetPct = computed(() => {
     const b = this.budget();
-    if (!b || !b.available) return 0;
-    return Math.min(100, Math.round((b.estimated / b.available) * 100));
+    if (!b) return 0;
+    // Already over the API limit (used > limit makes available negative): show full bar.
+    if (b.available <= 0) return 100;
+    return Math.min(100, Math.max(0, Math.round((b.estimated / b.available) * 100)));
   });
 
   totalDevices = computed(() => {

@@ -282,7 +282,7 @@ async def run_post_deployment_validation(
         site_setting_resp, org_setting_resp, inv_resp, switch_ports_data = await asyncio.gather(
             mistapi.arun(setting.getSiteSetting, session, site_id),
             mistapi.arun(org_setting.getOrgSettings, session, mist.org_id),
-            mistapi.arun(org_inventory.getOrgInventory, session, mist.org_id, site_id=site_id, limit=1000),
+            mistapi.arun(org_inventory.countOrgInventory, session, mist.org_id, distinct="type", site_id=site_id),
             _fetch_switch_ports(session, site_id),
         )
         up_ports_by_mac, sw_optics_by_mac = switch_ports_data
@@ -298,13 +298,15 @@ async def run_post_deployment_validation(
         # dominated by the 25 s/port TDR runtime, not by 3 s/call API latency.
         # On inventory failure we leave costs unregistered: the UI will hide the ETA
         # rather than show a wrong-by-an-order-of-magnitude one.
-        if inv_resp.status_code == 200 and isinstance(inv_resp.data, list):
+        # Using countOrgInventory(distinct="type") so the response is aggregated and
+        # never undercounts on sites with >1000 devices.
+        if inv_resp.status_code == 200 and isinstance(inv_resp.data, dict):
             counts = {"ap": 0, "switch": 0, "gateway": 0}
-            for d in inv_resp.data:
-                if isinstance(d, dict):
-                    t = d.get("type", "")
+            for item in inv_resp.data.get("results", []):
+                if isinstance(item, dict):
+                    t = item.get("type", "")
                     if t in counts:
-                        counts[t] += 1
+                        counts[t] = item.get("count", 0)
             n_ap, n_sw, n_gw = counts["ap"], counts["switch"], counts["gateway"]
             tracker.set_step_api_costs({
                 "site_info": 3,        # 2 settings + inventory (already in flight, but counted)
@@ -2518,7 +2520,7 @@ async def check_site_api_budget(
     try:
         usage_resp, inv_resp = await asyncio.gather(
             mistapi.arun(self_usage.getSelfApiUsage, session),
-            mistapi.arun(org_inventory.getOrgInventory, session, org_id, site_id=site_id, limit=1000),
+            mistapi.arun(org_inventory.countOrgInventory, session, org_id, distinct="type", site_id=site_id),
         )
     except Exception:
         # Don't surface raw exception text to the client. Full traceback in server logs.
@@ -2537,13 +2539,16 @@ async def check_site_api_budget(
         request_limit = usage_resp.data.get("request_limit", 5000)
     available = request_limit - requests_used
 
+    # countOrgInventory(distinct="type", site_id=...) returns aggregated counts, so it
+    # doesn't undercount on sites with >1000 devices the way a paginated getOrgInventory
+    # would.
     device_counts = {"ap": 0, "switch": 0, "gateway": 0}
-    if inv_resp.status_code == 200 and isinstance(inv_resp.data, list):
-        for d in inv_resp.data:
-            if isinstance(d, dict):
-                dtype = d.get("type", "")
+    if inv_resp.status_code == 200 and isinstance(inv_resp.data, dict):
+        for item in inv_resp.data.get("results", []):
+            if isinstance(item, dict):
+                dtype = item.get("type", "")
                 if dtype in device_counts:
-                    device_counts[dtype] += 1
+                    device_counts[dtype] = item.get("count", 0)
 
     n_ap = device_counts["ap"]
     n_sw = device_counts["switch"]
